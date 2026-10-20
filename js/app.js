@@ -795,7 +795,7 @@ function renderLibrary() {
     const pct = m.rangeWords ? Math.min(100, Math.round((m.pos || 0) / m.rangeWords * 100)) : 0;
     if (pct) bits.push(pct + "% read");
     const status = LIB.id === id ? "Reading now" : LIB.uploading.has(id) ? "Uploading…" : !Sync.user ? "" : m.cloud ? "Synced" : "Waiting to upload";
-    info.append(t, el("span", "hint", bits.join(" · ") + (status ? " · " + status : "")));
+    info.append(t, el("span", "hint", bits.filter(Boolean).join(" · ") + (status ? " · " + status : "")));
     const del = el("button", "btn ghost sm", "Delete");
     del.onclick = () => { if (del.dataset.armed) libDelete(id); else { del.dataset.armed = 1; del.textContent = "Confirm delete"; } };
     row.append(info, del); list.append(row);
@@ -828,6 +828,35 @@ async function handleFile(f) {
   }
 }
 $("file").onchange = e => { handleFile(e.target.files[0]); e.target.value = ""; };
+// Before a signed-out upload, invite the person to create an account (they can skip for this visit).
+const UG = { file: null, wanted: false };
+const SKIP_KEY = LS + "-upload-skip";
+function gateNeeded() {
+  if (Sync.user || !Sync.sb) return false;
+  try { return !sessionStorage.getItem(SKIP_KEY); } catch { return true; }
+}
+function openGate(file) { UG.file = file || null; UG.wanted = true; $("uploadGate").showModal(); }
+$("uploadBtn").addEventListener("click", e => { if (gateNeeded()) { e.preventDefault(); openGate(null); } });
+$("gateSkip").onclick = () => {
+  try { sessionStorage.setItem(SKIP_KEY, "1"); } catch {}
+  $("uploadGate").close(); UG.wanted = false;
+  const f = UG.file; UG.file = null;
+  if (f) handleFile(f); else $("file").click();
+};
+const gateToAccount = mode => () => { $("uploadGate").close(); switchTab("account"); setMode(mode); setTimeout(() => $("acctEmail").focus(), 50); };
+$("gateCreate").onclick = gateToAccount("create");
+$("gateSignin").onclick = gateToAccount("signin");
+$("uploadGate").addEventListener("cancel", () => { UG.file = null; UG.wanted = false; });
+// After signing in from the prompt: upload the file they dropped, or point them back to the upload button.
+function resumeUpload() {
+  if (!UG.wanted) return;
+  UG.wanted = false; switchTab("read");
+  const f = UG.file; UG.file = null;
+  if (f) { handleFile(f); return; }
+  $("drop").scrollIntoView({ behavior: "smooth", block: "center" });
+  $("drop").classList.add("over"); setTimeout(() => $("drop").classList.remove("over"), 1600);
+  toast("You're signed in. Now choose your file; it will be saved to your account.");
+}
 $("loadPages").onclick = () => {
   const n = PDF.pages.length, a = Math.max(1, Math.min(n, Math.round(+$("pFrom").value || 1))), b = Math.max(a, Math.min(n, Math.round(+$("pTo").value || n)));
   $("pFrom").value = a; $("pTo").value = b;
@@ -838,7 +867,7 @@ $("loadPages").onclick = () => {
 const drop = $("drop");
 ["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
 ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
-drop.addEventListener("drop", e => handleFile(e.dataTransfer.files[0]));
+drop.addEventListener("drop", e => { const f = e.dataTransfer.files[0]; if (!f) return; if (gateNeeded()) openGate(f); else handleFile(f); });
 document.addEventListener("keydown", e => {
   if (!$("tab-review").hidden && RV.checked && /^[1-4]$/.test(e.key) && !e.target.closest("input, textarea")) {
     const b = document.querySelectorAll("#gradeArea .grades button")[+e.key - 1]; if (b) { e.preventDefault(); b.click(); } return;
@@ -1466,7 +1495,7 @@ async function onAuth(event, session) {
   if (u && (!Sync.user || Sync.user.id !== u.id)) {
     Sync.user = u; renderAccount();
     if (event === "SIGNED_IN" && /access_token|type=signup/.test(location.hash)) { history.replaceState(null, "", siteUrl()); toast("Email confirmed. You're signed in."); }
-    await firstSync(); loadProfile();
+    await firstSync(); loadProfile(); resumeUpload();
   } else if (!u && Sync.user) {
     Sync.user = null; A.profile = null; A.recovering = false; Sync.pending.clear(); Sync.state = "idle";
   }

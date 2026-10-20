@@ -123,7 +123,7 @@
         <div class="upload" id="drop">
           <strong>Read your own PDF or text file</strong>
           <span class="hint">Drop a file here, or choose one. PDF, .txt and .md work. Scanned PDFs without selectable text can't be read.</span>
-          <label class="btn primary" for="file">Upload file</label>
+          <label class="btn primary" for="file" id="uploadBtn">Upload file</label>
           <input type="file" id="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" hidden>
           <span class="hint" id="fileStatus" aria-live="polite"></span>
         </div>
@@ -295,6 +295,18 @@
     </section>
   </main>
 </div>
+
+<dialog id="uploadGate" aria-labelledby="gateTitle">
+  <div class="stack">
+    <h3 id="gateTitle">Keep your PDFs with a free account</h3>
+    <p class="hint" style="margin:0">With an account, your uploads, reading position, flashcards and progress are saved safely and open on any device: your phone, laptop or a library computer. It's free and takes a minute.</p>
+    <div class="stack" style="gap:8px">
+      <button type="button" class="btn primary" id="gateCreate">Create a free account</button>
+      <button type="button" class="btn" id="gateSignin">I already have an account</button>
+      <button type="button" class="btn ghost" id="gateSkip">Not now, keep it on this device</button>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="settings">
   <form method="dialog" class="stack" id="settingsForm">

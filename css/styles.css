@@ -269,3 +269,6 @@ nav.tabs::-webkit-scrollbar { display: none }
 .menu input[type=range] { width: 100%; accent-color: var(--brand) }
 .menu input[type=range]:disabled { opacity: .5 }
 .menu output { font-variant-numeric: lining-nums tabular-nums }
+
+#uploadGate { width: min(420px, calc(100vw - 32px)) }
+#uploadGate .btn { width: 100% }
