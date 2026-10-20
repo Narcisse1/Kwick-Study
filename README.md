@@ -62,3 +62,13 @@ sw.js                   service worker for offline use
 manifest.webmanifest    install metadata
 icons/                  app icons
 ```
+
+## Design
+
+**Logo.** A brain whose two halves sit on an open book. The left half shows the folds of the brain, where knowledge is stored. The right half shows lines of text: reading turning into memory. The book's spine runs through the middle, so reading and memory meet there. The red dot at the top is the fixation point, the single spot your eyes rest on while the text slides past.
+
+**Colour.** Based on colour-psychology research:
+
+- **Blue** (brand, buttons, progress) is linked to calm, open, approach-minded focus. In Mehta & Zhu's 2009 *Science* study, blue doubled creative output compared with red.
+- **Red** appears only where attention to detail and recall matter: the fixation point, focus time, and ideas you missed. The same study found red improved detail-oriented tasks such as memory retrieval.
+- **Green** marks growth and rest: applying what you learn, remembered answers, breaks. Lichtenfeld et al. (2012) found that a glimpse of green improved creative performance, and linked green to the motivation to improve and grow.

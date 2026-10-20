@@ -1,18 +1,24 @@
 /* Layout: a book page. Masthead and running timer on top, chapters I–V as tabs, one measured column, ruled sections instead of cards. */
 :root {
-  --bg: #fafaf7; --surface: #ffffff; --ink: #1c1c1a; --muted: #6a6862; --line: #dcdad3; --rule: #1c1c1a;
-  --focus: #9a1f1a; --focus-soft: #f3e4e1; --rest: #2c5a46; --rest-soft: #e1ebe4; --warn: #8a6414;
+  /* Colour psychology: blue for calm, open focus (brand, actions); red only where attention to detail
+     and recall matter (the fixation point, focus time, missed ideas); green for growth and rest
+     (applying what you learn, remembered answers, breaks). Neutrals lean slightly blue. */
+  --bg: #f6f7f9; --surface: #ffffff; --ink: #1b2130; --muted: #5d6578; --line: #d9dde6; --rule: #1b2130;
+  --brand: #1f3a68; --brand-soft: #e3e9f4; --on-brand: #ffffff;
+  --focus: #b3261e; --focus-soft: #f7e1df; --rest: #2e6b4f; --rest-soft: #dfeee6; --warn: #8a6414;
   --display: "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;
   --read: "Source Serif 4", "Source Serif Pro", "Iowan Old Style", Georgia, serif;
   --mono: "Source Serif 4", "Source Serif Pro", Georgia, serif;
   --body: "Source Sans 3", "Source Sans Pro", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #151514; --surface: #1c1c1a; --ink: #e8e6df; --muted: #a09d94; --line: #34332f; --rule: #e8e6df;
-  --focus: #e06a5f; --focus-soft: #3a2422; --rest: #85b89c; --rest-soft: #1f2d26; --warn: #d6a64a; color-scheme: dark } }
+  --bg: #12161f; --surface: #181d28; --ink: #e6e9f0; --muted: #9aa2b5; --line: #2b3242; --rule: #e6e9f0;
+  --brand: #8fb0ea; --brand-soft: #1f2a40; --on-brand: #10141c;
+  --focus: #ef6b5f; --focus-soft: #3a2224; --rest: #7cc4a0; --rest-soft: #1b2e26; --warn: #d6a64a; color-scheme: dark } }
 :root[data-theme="dark"] {
-  --bg: #151514; --surface: #1c1c1a; --ink: #e8e6df; --muted: #a09d94; --line: #34332f; --rule: #e8e6df;
-  --focus: #e06a5f; --focus-soft: #3a2422; --rest: #85b89c; --rest-soft: #1f2d26; --warn: #d6a64a; color-scheme: dark }
+  --bg: #12161f; --surface: #181d28; --ink: #e6e9f0; --muted: #9aa2b5; --line: #2b3242; --rule: #e6e9f0;
+  --brand: #8fb0ea; --brand-soft: #1f2a40; --on-brand: #10141c;
+  --focus: #ef6b5f; --focus-soft: #3a2224; --rest: #7cc4a0; --rest-soft: #1b2e26; --warn: #d6a64a; color-scheme: dark }
 
 * { box-sizing: border-box }
 :root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px) }
@@ -23,7 +29,7 @@ img { max-width: 100% }
 body { background: var(--bg); color: var(--ink); font-family: var(--read); font-size: 16px; line-height: 1.6; font-variant-numeric: oldstyle-nums; font-optical-sizing: auto; -webkit-font-smoothing: antialiased }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
 button, input, select, textarea { font: inherit; color: inherit }
-:focus-visible { outline: 1px solid var(--focus); outline-offset: 3px }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px }
 h1, h2, h3 { font-family: var(--display); font-weight: 500; text-wrap: balance; margin: 0; line-height: 1.2; letter-spacing: -0.005em }
 h2 { font-size: 1.45rem } h3 { font-size: 1.15rem }
 em { font-style: italic }
@@ -32,8 +38,10 @@ em { font-style: italic }
 /* Masthead with running timer */
 .bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); border-bottom: 1px solid var(--rule) }
 .bar .wrap { display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap; padding-block: 12px 10px }
-.brand { font-family: var(--display); font-weight: 500; font-size: 1.3rem; letter-spacing: .01em; margin-right: auto; line-height: 1 }
-.brand span { color: var(--focus); padding-inline: 1px }
+.brand { display: flex; align-items: center; gap: 9px; margin-right: auto; font-family: var(--display); font-weight: 500; font-size: 1.3rem; letter-spacing: .005em; line-height: 1; color: var(--ink) }
+.brand b { font-weight: 500; color: var(--brand) }
+.logo { width: 34px; height: 34px; flex: none }
+.logo .l-brain { stroke: var(--brand) } .logo .l-text { stroke: var(--rest) } .logo .l-dot { fill: var(--focus) }
 .pomo { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap }
 .phase { font-variant-caps: all-small-caps; letter-spacing: .1em; font-size: 1rem; color: var(--focus) }
 .phase.rest { color: var(--rest) }
@@ -41,23 +49,23 @@ em { font-style: italic }
 .dots { font-style: italic; color: var(--muted); font-size: .9rem; white-space: nowrap }
 .btn { font-family: var(--body); font-size: .85rem; font-weight: 500; letter-spacing: .02em; border: 1px solid var(--ink); background: transparent; border-radius: 2px; padding: 7px 14px; cursor: pointer; line-height: 1.2 }
 .btn:hover { background: var(--ink); color: var(--bg) }
-.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--bg) }
-.btn.primary:hover { background: transparent; color: var(--ink) }
+.btn.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand) }
+.btn.primary:hover { background: transparent; color: var(--brand) }
 .btn.rest { background: var(--rest); border-color: var(--rest); color: var(--bg) }
 .btn.rest:hover { background: transparent; color: var(--rest) }
 .btn.ghost { border-color: transparent; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding-inline: 4px }
 .btn.ghost:hover { background: transparent; color: var(--ink) }
 .btn:disabled { opacity: .4; cursor: not-allowed }
 .btn:disabled:hover { background: transparent; color: inherit }
-.btn.primary:disabled:hover { background: var(--ink); color: var(--bg) }
+.btn.primary:disabled:hover { background: var(--brand); color: var(--on-brand) }
 .btn.sm { padding: 4px 10px; font-size: .8rem }
 
 /* Chapters */
 nav.tabs { display: flex; gap: 2px 22px; overflow-x: auto; padding-block: 18px 0; border-bottom: 1px solid var(--line); margin-bottom: 26px }
 nav.tabs button { border: 0; background: none; padding: 6px 0 9px; cursor: pointer; color: var(--muted); font-family: var(--display); font-size: 1.02rem; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px }
-nav.tabs button b { font-weight: 400; font-variant-caps: small-caps; color: var(--focus); margin-right: 5px; font-size: .92rem }
+nav.tabs button b { font-weight: 400; font-variant-caps: small-caps; color: var(--brand); margin-right: 5px; font-size: .92rem }
 nav.tabs button:hover { color: var(--ink) }
-nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink) }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--brand) }
 .count { font-family: var(--body); font-size: .68rem; font-weight: 600; color: var(--focus); vertical-align: super; margin-left: 3px; font-variant-numeric: lining-nums }
 main { padding-block: 0 64px }
 section.tab { display: grid; gap: 0 }
@@ -88,24 +96,24 @@ section.tab > :first-child { border-top: 0; padding-top: 0 }
 .overlay { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; background: var(--surface); padding: 14px; gap: 8px; align-content: center }
 .overlay strong { font-family: var(--display); font-weight: 500; font-size: 1.3rem; font-style: italic }
 .progress { height: 1px; background: var(--line); position: relative }
-.progress div { position: absolute; left: 0; top: -1px; height: 3px; background: var(--ink); width: 0; transition: width .2s linear }
+.progress div { position: absolute; left: 0; top: -1px; height: 3px; background: var(--brand); width: 0; transition: width .2s linear }
 .meta { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .9rem; color: var(--muted); font-style: italic; font-variant-numeric: lining-nums tabular-nums }
 .controls { display: flex; gap: 16px 24px; flex-wrap: wrap; align-items: center; justify-content: space-between }
 .transport { display: flex; gap: 10px; align-items: center }
-.play { width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--ink); background: var(--ink); color: var(--bg); cursor: pointer; display: grid; place-items: center }
-.play:hover { background: var(--bg); color: var(--ink) }
+.play { width: 56px; height: 56px; border-radius: 50%; border: 1px solid var(--brand); background: var(--brand); color: var(--on-brand); cursor: pointer; display: grid; place-items: center }
+.play:hover { background: var(--bg); color: var(--brand) }
 .play svg { width: 20px; height: 20px; fill: currentColor }
 .round { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; padding: 0 }
 .round svg { width: 14px; height: 14px; fill: currentColor }
 .speed { display: grid; gap: 0; min-width: 200px; flex: 1 1 220px; max-width: 320px }
 .speed output { font-family: var(--display); font-size: 1.05rem; font-variant-numeric: lining-nums tabular-nums }
-input[type=range] { width: 100%; accent-color: var(--ink) }
+input[type=range] { width: 100%; accent-color: var(--brand) }
 .opts { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center; font-size: .95rem }
 .opts label { display: flex; gap: 6px; align-items: center }
 select { font-family: var(--body); font-size: .85rem; border: 0; border-bottom: 1px solid var(--ink); background: transparent; border-radius: 0; padding: 2px 2px }
-input[type=checkbox] { accent-color: var(--ink); width: 15px; height: 15px }
+input[type=checkbox] { accent-color: var(--brand); width: 15px; height: 15px }
 .prime { font-style: italic; color: var(--muted); font-size: .93rem; text-align: center; border-top: 1px solid var(--line); padding-top: 10px }
-.prime b { font-style: normal; font-weight: 400; font-variant-caps: all-small-caps; letter-spacing: .1em; color: var(--focus); margin-right: 4px }
+.prime b { font-style: normal; font-weight: 400; font-variant-caps: all-small-caps; letter-spacing: .1em; color: var(--brand); margin-right: 4px }
 
 .context { font-family: var(--read); font-size: 1.06rem; line-height: 1.7; max-width: 64ch; max-height: 300px; overflow-y: auto; hyphens: manual; text-align: left }
 .context span { cursor: pointer }
@@ -123,7 +131,7 @@ details[open] summary { margin-bottom: 12px }
 .stack { display: grid; gap: 12px }
 kbd { font-family: var(--body); font-size: .72rem; border: 1px solid var(--line); border-radius: 2px; padding: 0 4px; background: var(--surface); font-style: normal }
 .upload { border: 1px solid var(--line); padding: 26px 16px; display: grid; gap: 10px; justify-items: center; text-align: center; background: var(--surface) }
-.upload.over { border-color: var(--ink); background: var(--focus-soft) }
+.upload.over { border-color: var(--brand); background: var(--brand-soft) }
 .upload strong { font-family: var(--display); font-weight: 500; font-size: 1.15rem }
 
 /* Recall */
@@ -155,10 +163,10 @@ kbd { font-family: var(--body); font-size: .72rem; border: 1px solid var(--line)
 @media (max-width: 620px) { .qs { grid-template-columns: 1fr } }
 .q { display: grid; gap: 4px; align-content: start; min-width: 0 }
 .q label { font-family: var(--display); font-weight: 500; font-size: 1.08rem }
-.q label i { font-style: normal; color: var(--focus); margin-right: 8px; font-variant-caps: all-small-caps; letter-spacing: .09em; font-size: .95rem }
+.q label i { font-style: normal; color: var(--rest); margin-right: 8px; font-variant-caps: all-small-caps; letter-spacing: .09em; font-size: .95rem }
 .q .hint { font-size: .88rem; font-style: italic }
 .notes { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0; text-align: left }
-.notes dt { font-variant-caps: all-small-caps; letter-spacing: .1em; color: var(--focus); padding-top: 1px }
+.notes dt { font-variant-caps: all-small-caps; letter-spacing: .1em; color: var(--rest); padding-top: 1px }
 .notes dd { margin: 0; font-family: var(--read); min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap }
 .ladder { display: flex; gap: 3px; align-items: center }
 .ladder i { width: 12px; height: 3px; background: var(--line); display: block }

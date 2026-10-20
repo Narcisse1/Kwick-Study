@@ -779,8 +779,8 @@ function drawChart(sess) {
   const slot = (W - L - Rm) / 12, bw = Math.min(30, slot * 0.6);
   sess.forEach((s, i) => {
     const x = L + slot * i + (slot - bw) / 2;
-    mk("rect", { x, y: y(s.wpm), width: bw, height: y(0) - y(s.wpm), fill: "var(--line)" });
-    if (s.recall != null) { const e = s.wpm * s.recall / 100; mk("rect", { x, y: y(e), width: bw, height: y(0) - y(e), fill: "var(--ink)" }); }
+    mk("rect", { x, y: y(s.wpm), width: bw, height: y(0) - y(s.wpm), fill: "var(--brand-soft)" });
+    if (s.recall != null) { const e = s.wpm * s.recall / 100; mk("rect", { x, y: y(e), width: bw, height: y(0) - y(e), fill: "var(--brand)" }); }
     const t = mk("text", { x: x + bw / 2, y: H - 8, "text-anchor": "middle" }); t.textContent = s.recall == null ? "–" : s.recall + "%";
   });
   box.replaceChildren(svg);
