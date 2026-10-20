@@ -644,7 +644,7 @@ function renderWpm() {
 });
 $("chunkSize").onchange = e => { save("settings", { ...state.settings, chunk: +e.target.value }); };
 $("punct").onchange = e => { save("settings", { ...state.settings, punct: e.target.checked }); };
-$("mode").onchange = e => { stop(); save("settings", { ...state.settings, mode: e.target.value }); $("chunkSize").disabled = e.target.value === "slide"; renderIdle(); };
+$("mode").onchange = e => { stop(); save("settings", { ...state.settings, mode: e.target.value }); $("chunkRow").hidden = e.target.value !== "flash"; renderIdle(); };
 window.addEventListener("resize", () => { if (S().mode === "slide") { SL.spans = []; slidePlace(); } });
 if (document.fonts) document.fonts.ready.then(() => { if (S().mode === "slide") { SL.spans = []; slidePlace(); } });
 $("loadText").onclick = () => {
@@ -1305,7 +1305,7 @@ function applySettings() {
   const s = S(); applySize(); applyTheme(); renderSoundMenu();
   renderWpm();
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
-  $("mode").value = s.mode; $("chunkSize").disabled = s.mode === "slide";
+  $("mode").value = s.mode; $("chunkRow").hidden = s.mode !== "flash";
   if (!R.playing && R.words.length) renderIdle();
   if (!P.running && P.remain === dur(P.phase) || !P.running && P.remain > dur(P.phase)) P.remain = dur(P.phase);
   pomoRender(); readerMeta();
