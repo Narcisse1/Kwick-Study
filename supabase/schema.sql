@@ -107,6 +107,36 @@ create trigger user_docs_before_write
   for each row execute function public.user_docs_before_write();
 
 -- ---------------------------------------------------------------------------
+-- Library: the text of uploaded PDFs and text files, one private JSON file per
+-- upload under a folder named after the user's id ("<user id>/<text id>.json").
+-- If running these policies in the SQL Editor hangs, run them one at a time.
+-- ---------------------------------------------------------------------------
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('library', 'library', false, 20971520, array['application/json'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit, allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Library: read own files" on storage.objects;
+create policy "Library: read own files" on storage.objects
+  for select to authenticated
+  using (bucket_id = 'library' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "Library: add own files" on storage.objects;
+create policy "Library: add own files" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'library' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "Library: replace own files" on storage.objects;
+create policy "Library: replace own files" on storage.objects
+  for update to authenticated
+  using (bucket_id = 'library' and (storage.foldername(name))[1] = (select auth.uid())::text)
+  with check (bucket_id = 'library' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+drop policy if exists "Library: delete own files" on storage.objects;
+create policy "Library: delete own files" on storage.objects
+  for delete to authenticated
+  using (bucket_id = 'library' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+-- ---------------------------------------------------------------------------
 -- Let people delete their own account (removes their profile and study data).
 -- ---------------------------------------------------------------------------
 create or replace function public.delete_my_account()

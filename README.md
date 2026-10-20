@@ -19,7 +19,7 @@ PDF text is extracted in the browser with [pdf.js](https://mozilla.github.io/pdf
 
 Without an account, everything is stored in the browser's `localStorage` on that device. **Settings → Export backup** saves a JSON copy and **Import backup** restores it.
 
-With a free account (the **Sign in** button, or `/#account`), study data also syncs across devices through [Supabase](https://supabase.com). Each flashcard, takeaway, session, day and the settings is one row in `user_docs`; when two devices edit the same item, the most recent edit wins. The sign-up form has an opt-in newsletter checkbox (off by default); the consent time is recorded by the database. People can unsubscribe, sign out (optionally clearing the browser) and delete their account from the Account page.
+With a free account (the **Sign in** button, or `/#account`), study data also syncs across devices through [Supabase](https://supabase.com). Uploaded PDFs and text files go into **Your library** on the Read page: their extracted text is kept on the device (IndexedDB) and, when signed in, in the private Storage bucket `library`, so they open on every device and resume at the same page range and position. Each flashcard, takeaway, session, day and the settings is one row in `user_docs`; when two devices edit the same item, the most recent edit wins. The sign-up form has an opt-in newsletter checkbox (off by default); the consent time is recorded by the database. People can unsubscribe, sign out (optionally clearing the browser) and delete their account from the Account page.
 
 ### Setting up accounts (one time)
 

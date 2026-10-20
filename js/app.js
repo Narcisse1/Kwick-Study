@@ -11,7 +11,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
-const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {} };
+const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
 const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium" };
 
 function ingest(key, val) {
@@ -20,6 +20,7 @@ function ingest(key, val) {
   else if (key.startsWith("sess_")) state.sessions[key.slice(5)] = val;
   else if (key.startsWith("day_")) state.days[key.slice(4)] = val;
   else if (key.startsWith("take_")) state.takes[key.slice(5)] = val;
+  else if (key.startsWith("lib_")) state.library[key.slice(4)] = val;
 }
 function allDocs() {
   const out = { settings: state.settings };
@@ -27,9 +28,10 @@ function allDocs() {
   for (const [k, v] of Object.entries(state.sessions)) out["sess_" + k] = v;
   for (const [k, v] of Object.entries(state.days)) out["day_" + k] = v;
   for (const [k, v] of Object.entries(state.takes)) out["take_" + k] = v;
+  for (const [k, v] of Object.entries(state.library)) out["lib_" + k] = v;
   return out;
 }
-const MAPS = { card: "cards", sess: "sessions", day: "days", take: "takes" };
+const MAPS = { card: "cards", sess: "sessions", day: "days", take: "takes", lib: "library" };
 function getDoc(key) {
   if (key === "settings") return state.settings;
   const i = key.indexOf("_"), m = state[MAPS[key.slice(0, i)]];
@@ -39,6 +41,7 @@ function dropDoc(key) {
   if (key === "settings") { state.settings = {}; return; }
   const i = key.indexOf("_"), m = state[MAPS[key.slice(0, i)]];
   if (m) delete m[key.slice(i + 1)];
+  if (key.startsWith("lib_")) idbDel(key.slice(4));
 }
 function mirror() { try { localStorage.setItem(LS, JSON.stringify(allDocs())); } catch {} }
 // meta[key] = when this device last changed the doc; used to settle conflicts when syncing.
@@ -119,7 +122,7 @@ async function firstSync() {
     const rows = await fetchRows(null);
     if (owner && owner !== Sync.user.id) {
       // This browser holds someone else's data: start from this account's data instead of mixing them.
-      state.settings = {}; state.cards = {}; state.sessions = {}; state.days = {}; state.takes = {}; meta = {};
+      state.settings = {}; state.cards = {}; state.sessions = {}; state.days = {}; state.takes = {}; state.library = {}; meta = {}; idbClear();
     }
     const { remoteKeys, ours, since } = applyRemote(rows);
     // Push anything only this device has, or where this device's copy is newer.
@@ -132,6 +135,7 @@ async function firstSync() {
     applySettings(); renderAll();
     Sync.state = "ok"; Sync.at = new Date();
     await Sync.flush();
+    libUploadPending();
   } catch (e) { Sync.state = "error"; }
   renderSyncState();
 }
@@ -147,6 +151,7 @@ async function pullChanges() {
     applySettings(); renderAll();
     Sync.state = "ok"; Sync.at = new Date(); renderSyncState();
     if (Sync.pending.size) Sync.flush();
+    libUploadPending();
   } catch { Sync.state = "error"; renderSyncState(); }
 }
 function renderSyncState() {
@@ -241,6 +246,8 @@ const R = { title: SAMPLE_TITLE, text: SAMPLE, words: [], i: 0, playing: false, 
 function parse(text) { return text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean); }
 function loadText(title, text, sample) {
   stop();
+  if (LIB.posTimer) { clearTimeout(LIB.posTimer); const id = LIB.id, m = state.library[id]; if (m && m.pos !== R.i) save("lib_" + id, { ...m, pos: R.i, rangeWords: R.words.length }); }
+  LIB.id = null;
   R.title = title || "Untitled text"; R.text = text; R.words = parse(text); R.i = 0; R.maxI = 0; R.activeMs = 0; R.session = null; R.sample = !!sample;
   $("docTitle").textContent = R.title;
   $("docInfo").textContent = (sample ? "Sample passage · " : "") + R.words.length.toLocaleString() + " words";
@@ -332,6 +339,7 @@ function stop() {
   R.playing = false; clearTimeout(R.t); cancelAnimationFrame(SL.raf); R.activeMs += performance.now() - R.since;
   setPlayIcon(); buildContext(); $("contextPanel").hidden = false;
   try { wake && wake.release(); wake = null; } catch {}
+  libSavePos();
 }
 function setPlayIcon() {
   $("playIcon").innerHTML = R.playing ? '<path d="M6 4h4v16H6zM14 4h4v16h-4z"/>' : '<path d="M7 4v16l13-8z"/>';
@@ -358,7 +366,7 @@ function jumpSentence(dir) {
   if (dir > 0 && k >= s.length) target = R.words.length - 1;
   R.i = target;
   if (S().mode === "slide") { SL.pos = Math.min(R.i, R.words.length - 1); slidePlace(); } else showWord(R.words[R.i] || "", !R.playing);
-  readerMeta(); if (!R.playing) buildContext();
+  readerMeta(); if (!R.playing) { buildContext(); libSavePos(); }
 }
 function readerMeta() {
   const n = R.words.length, pct = n ? R.i / n * 100 : 0;
@@ -379,7 +387,7 @@ function buildContext() {
   box.append(frag);
   const cur = box.querySelector(".cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
 }
-$("context").onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; R.i = +i; renderIdle(); readerMeta(); buildContext(); };
+$("context").onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; R.i = +i; renderIdle(); readerMeta(); buildContext(); libSavePos(); };
 function showOverlay(title, text, btnText, fn) {
   const o = $("overlay"); o.replaceChildren(el("strong", "", title), el("span", "hint", text));
   if (btnText) { const b = el("button", "btn primary", btnText); b.onclick = fn; const w = el("div"); w.append(b); o.append(w); }
@@ -414,7 +422,9 @@ if (document.fonts) document.fonts.ready.then(() => { if (S().mode === "slide") 
 $("loadText").onclick = () => {
   const t = $("inText").value.trim();
   if (parse(t).length < 10) { toast("Paste at least a few sentences to read."); return; }
-  loadText($("inTitle").value.trim(), t, false); $("loadBox").open = false; toast("Loaded. Press Space to start.");
+  $("loadBox").open = false;
+  libAdd($("inTitle").value.trim() || "Pasted text", "text", [t]).then(id => libOpen(id)).then(() => toast("Loaded and saved to your library. Press Space to start."));
+  $("inText").value = ""; $("inTitle").value = "";
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
 /* Uploads: PDF (text extracted with pdf.js, loaded on first use) and plain text files. */
@@ -457,6 +467,113 @@ function loadPdfPages(from, to) {
   const title = PDF.name + (PDF.pages.length > 1 ? (from === to ? " · p. " + from : " · pp. " + from + "–" + to) : "");
   loadText(title, text, false);
 }
+/* ---------- Library: uploaded texts kept on this device (IndexedDB) and, when signed in,
+   in the private Supabase Storage bucket "library" (one JSON file per text). The list itself
+   (title, page range, reading position) syncs like any other study data as "lib_<id>". ---------- */
+let idbPromise = null;
+function idb() {
+  return idbPromise = idbPromise || new Promise((res, rej) => {
+    const r = indexedDB.open("kwick-study", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("texts", { keyPath: "id" });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbDo(mode, fn) {
+  const db = await idb();
+  return new Promise((res, rej) => { const tx = db.transaction("texts", mode), req = fn(tx.objectStore("texts")); tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); });
+}
+const idbGet = id => idbDo("readonly", st => st.get(id)).catch(() => null);
+const idbPut = rec => idbDo("readwrite", st => st.put(rec));
+const idbDel = id => idbDo("readwrite", st => st.delete(id)).catch(() => {});
+const idbClear = () => idbDo("readwrite", st => st.clear()).catch(() => {});
+
+const LIB = { id: null, uploading: new Set(), posTimer: null };
+const libPath = id => Sync.user.id + "/" + id + ".json";
+async function libAdd(title, kind, pages) {
+  const id = uid(), words = parse(pages.join(" ")).length;
+  try { await idbPut({ id, title, kind, pages }); } catch {}
+  save("lib_" + id, { title, kind, pages: pages.length, words, created: Date.now(), opened: Date.now(), from: 1, to: pages.length, pos: 0, rangeWords: words, cloud: false });
+  libUpload(id);
+  return id;
+}
+async function libUpload(id) {
+  if (!Sync.user || !Sync.sb || LIB.uploading.has(id)) return;
+  const m = state.library[id]; if (!m || m.cloud) return;
+  const rec = await idbGet(id); if (!rec) return;
+  LIB.uploading.add(id); renderLibrary();
+  try {
+    const body = new Blob([JSON.stringify({ title: rec.title, kind: rec.kind, pages: rec.pages })], { type: "application/json" });
+    const { error } = await Sync.sb.storage.from("library").upload(libPath(id), body, { upsert: true, contentType: "application/json" });
+    if (error) throw error;
+    if (state.library[id]) save("lib_" + id, { ...state.library[id], cloud: true });
+  } catch (e) { /* stays on this device; retried on the next sync */ }
+  finally { LIB.uploading.delete(id); renderLibrary(); }
+}
+function libUploadPending() { Object.keys(state.library).forEach(id => { if (!state.library[id].cloud) libUpload(id); }); }
+async function libContent(id) {
+  const local = await idbGet(id);
+  if (local) return local;
+  const m = state.library[id];
+  if (!m || !m.cloud || !Sync.user) return null;
+  const { data, error } = await Sync.sb.storage.from("library").download(libPath(id));
+  if (error || !data) throw error || new Error("download failed");
+  const c = JSON.parse(await data.text());
+  const rec = { id, title: c.title, kind: c.kind, pages: c.pages };
+  idbPut(rec).catch(() => {});
+  return rec;
+}
+async function libOpen(id, range) {
+  const m = state.library[id]; if (!m) return;
+  let rec;
+  try { rec = await libContent(id); } catch { toast("Couldn't download this text. Check your connection and try again."); return; }
+  if (!rec) { toast(Sync.user ? "This text hasn't finished uploading from the device that added it. Try again shortly." : "This text is in your account. Sign in to open it here."); return; }
+  PDF.name = rec.title; PDF.pages = rec.pages;
+  const n = rec.pages.length;
+  const from = range ? range[0] : Math.min(m.from || 1, n), to = range ? range[1] : Math.min(Math.max(m.to || n, from), n);
+  loadPdfPages(from, to);
+  LIB.id = id;
+  const pos = range || (m.pos || 0) >= R.words.length - 1 ? 0 : (m.pos || 0);
+  if (pos) { R.i = pos; renderIdle(); buildContext(); readerMeta(); }
+  $("pageRange").hidden = n <= 1;
+  if (n > 1) { $("pFrom").value = from; $("pTo").value = to; $("pFrom").max = $("pTo").max = n; $("pOf").textContent = "of " + n; }
+  save("lib_" + id, { ...m, from, to, pos, rangeWords: R.words.length, opened: Date.now() });
+  renderLibrary();
+}
+// Remember where you are in a library text (after pausing or jumping), so any device resumes there.
+function libSavePos() {
+  const id = LIB.id; if (!id) return;
+  clearTimeout(LIB.posTimer);
+  const pos = R.i, rangeWords = R.words.length;
+  LIB.posTimer = setTimeout(() => { const m = state.library[id]; if (m && m.pos !== pos) { save("lib_" + id, { ...m, pos, rangeWords, opened: Date.now() }); renderLibrary(); } }, 1200);
+}
+async function libDelete(id) {
+  const m = state.library[id]; if (!m) return;
+  if (LIB.id === id) LIB.id = null;
+  remove("lib_" + id); idbDel(id);
+  if (Sync.user && m.cloud) Sync.sb.storage.from("library").remove([libPath(id)]).catch(() => {});
+  renderLibrary();
+}
+function renderLibrary() {
+  const panel = $("libPanel"), list = $("libList");
+  const items = Object.entries(state.library).sort((a, b) => (b[1].opened || 0) - (a[1].opened || 0));
+  panel.hidden = !items.length; list.replaceChildren();
+  $("libNote").textContent = !items.length ? "" : Sync.user ? "Synced to your account" : "On this device. Sign in to open them on your other devices.";
+  items.forEach(([id, m]) => {
+    const row = el("div", "lib-item" + (LIB.id === id ? " current" : ""));
+    const info = el("div", "lib-info");
+    const t = el("button", "lib-title", m.title); t.onclick = () => libOpen(id).then(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    const bits = [m.kind === "pdf" ? "PDF" : "Text", m.pages > 1 ? m.pages + " pages" : null, (m.words || 0).toLocaleString() + " words"];
+    if (m.pages > 1 && (m.from !== 1 || m.to !== m.pages)) bits.push(m.from === m.to ? "p. " + m.from : "pp. " + m.from + "–" + m.to);
+    const pct = m.rangeWords ? Math.min(100, Math.round((m.pos || 0) / m.rangeWords * 100)) : 0;
+    if (pct) bits.push(pct + "% read");
+    const status = LIB.id === id ? "Reading now" : LIB.uploading.has(id) ? "Uploading…" : !Sync.user ? "" : m.cloud ? "Synced" : "Waiting to upload";
+    info.append(t, el("span", "hint", bits.join(" · ") + (status ? " · " + status : "")));
+    const del = el("button", "btn ghost sm", "Delete");
+    del.onclick = () => { if (del.dataset.armed) libDelete(id); else { del.dataset.armed = 1; del.textContent = "Confirm delete"; } };
+    row.append(info, del); list.append(row);
+  });
+}
+
 async function handleFile(f) {
   if (!f) return;
   const name = f.name.replace(/\.[^.]+$/, ""), isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
@@ -469,20 +586,15 @@ async function handleFile(f) {
       const pages = await readPdf(f);
       const words = parse(pages.join(" ")).length;
       if (words < 10) { $("fileStatus").textContent = "No selectable text found. This PDF is probably a scan or images."; return; }
-      PDF.name = name; PDF.pages = pages;
-      loadPdfPages(1, pages.length);
-      if (pages.length > 1) {
-        $("pFrom").value = 1; $("pTo").value = pages.length; $("pFrom").max = $("pTo").max = pages.length;
-        $("pOf").textContent = "of " + pages.length; $("pageRange").hidden = false;
-      }
+      await libOpen(await libAdd(name, "pdf", pages));
       $("fileStatus").textContent = "Loaded " + f.name + ": " + pages.length + " page" + (pages.length > 1 ? "s" : "") + ", " + words.toLocaleString() + " words." + (pages.length > 1 ? " Choose a page range below to read one section per round." : "");
     } else {
       const text = await f.text();
       if (parse(text).length < 10) { $("fileStatus").textContent = "That file has too little text to read."; return; }
-      loadText(name, text, false);
+      await libOpen(await libAdd(name, "text", [text]));
       $("fileStatus").textContent = "Loaded " + f.name + ": " + R.words.length.toLocaleString() + " words.";
     }
-    toast("Loaded. Press Space to start."); window.scrollTo({ top: 0, behavior: "smooth" });
+    toast("Loaded and saved to your library. Press Space to start."); window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (e) {
     $("fileStatus").textContent = "Couldn't read that file. If it's a PDF, check it isn't password-protected, then try again.";
   }
@@ -490,7 +602,9 @@ async function handleFile(f) {
 $("file").onchange = e => { handleFile(e.target.files[0]); e.target.value = ""; };
 $("loadPages").onclick = () => {
   const n = PDF.pages.length, a = Math.max(1, Math.min(n, Math.round(+$("pFrom").value || 1))), b = Math.max(a, Math.min(n, Math.round(+$("pTo").value || n)));
-  $("pFrom").value = a; $("pTo").value = b; loadPdfPages(a, b); toast("Loaded pages " + a + "–" + b + ".");
+  $("pFrom").value = a; $("pTo").value = b;
+  if (LIB.id) libOpen(LIB.id, [a, b]); else loadPdfPages(a, b);
+  toast(a === b ? "Loaded page " + a + "." : "Loaded pages " + a + "–" + b + ".");
   window.scrollTo({ top: 0, behavior: "smooth" });
 };
 const drop = $("drop");
@@ -948,7 +1062,7 @@ function applySettings() {
   if (!P.running && P.remain === dur(P.phase) || !P.running && P.remain > dur(P.phase)) P.remain = dur(P.phase);
   pomoRender(); readerMeta();
 }
-function renderAll() { renderReview(); renderProgress(); renderRecall(); renderApply(); }
+function renderAll() { renderReview(); renderProgress(); renderRecall(); renderApply(); renderLibrary(); }
 
 loadText(SAMPLE_TITLE, SAMPLE, true);
 P.remain = dur("focus");
@@ -1077,7 +1191,8 @@ $("signOut").onclick = async () => {
   await Sync.sb.auth.signOut();
   if (wipe) {
     try { [LS, META, OWNER].forEach(k => localStorage.removeItem(k)); } catch {}
-    state.settings = {}; state.cards = {}; state.sessions = {}; state.days = {}; state.takes = {}; meta = {};
+    LIB.id = null;
+    state.settings = {}; state.cards = {}; state.sessions = {}; state.days = {}; state.takes = {}; state.library = {}; meta = {}; idbClear();
     applySettings(); renderAll();
   }
   toast(wipe ? "Signed out and removed your data from this browser." : "Signed out.");
@@ -1086,6 +1201,10 @@ $("delAcct").onclick = async () => {
   const b = $("delAcct");
   if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Yes, permanently delete my account"; acctMsg("acctInMsg", "This deletes your account, newsletter subscription and synced study data. Data on this device stays unless you remove it.", true); return; }
   b.disabled = true;
+  try {
+    const { data: files } = await Sync.sb.storage.from("library").list(Sync.user.id, { limit: 1000 });
+    if (files && files.length) await Sync.sb.storage.from("library").remove(files.map(f => Sync.user.id + "/" + f.name));
+  } catch {}
   const { error } = await Sync.sb.rpc("delete_my_account");
   b.disabled = false; delete b.dataset.armed; b.textContent = "Delete account";
   if (error) return acctMsg("acctInMsg", "Couldn't delete your account. Try again.", true);

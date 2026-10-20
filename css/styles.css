@@ -242,3 +242,12 @@ nav.tabs::-webkit-scrollbar { display: none }
 .mark { font-variant-caps: all-small-caps; letter-spacing: .09em; font-size: .95rem }
 .mark.right { color: var(--rest) } .mark.close { color: var(--warn) } .mark.wrong { color: var(--focus) }
 .score-line { font-family: var(--display); font-size: 1.1rem }
+
+/* Library */
+.lib { display: grid; border-top: 1px solid var(--line) }
+.lib-item { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line) }
+.lib-info { display: grid; gap: 2px; min-width: 0 }
+.lib-title { all: unset; cursor: pointer; font-family: var(--display); font-size: 1.05rem; color: var(--brand); overflow-wrap: anywhere }
+.lib-title:hover { text-decoration: underline; text-underline-offset: 3px }
+.lib-title:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px }
+.lib-item.current .lib-title { color: var(--ink); font-weight: 600 }
