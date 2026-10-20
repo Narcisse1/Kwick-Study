@@ -224,24 +224,34 @@ function buildAmbient(ctx, type) {
   const gain = v => { const g = ctx.createGain(); g.gain.value = v; return g; };
   const lfo = (rate, depth, param) => { const o = ctx.createOscillator(), g = gain(depth); o.frequency.value = rate; o.connect(g); g.connect(param); o.start(); running.push(o); };
   if (type === "river") {
-    const low = gain(0.55); noise("brown").connect(filter("lowpass", 650)).connect(low).connect(out);
-    const bp = filter("bandpass", 1400, 0.6), hiss = gain(0.09);
+    const low = gain(0.45); noise("brown").connect(filter("lowpass", 900)).connect(low).connect(out);
+    const bp = filter("bandpass", 1500, 0.5), hiss = gain(0.22);
     noise("white").connect(bp).connect(hiss).connect(out);
-    lfo(0.23, 450, bp.frequency); lfo(0.17, 0.035, hiss.gain); lfo(0.11, 0.12, low.gain);
+    const bp2 = filter("bandpass", 3200, 1.2), sparkle = gain(0.06);
+    noise("white").connect(bp2).connect(sparkle).connect(out);
+    lfo(0.23, 500, bp.frequency); lfo(0.17, 0.07, hiss.gain); lfo(0.31, 0.03, sparkle.gain); lfo(0.11, 0.1, low.gain);
   } else if (type === "rain") {
-    const g = gain(0.13); noise("white").connect(filter("highpass", 900)).connect(filter("lowpass", 7000)).connect(g).connect(out);
-    noise("brown").connect(filter("lowpass", 300)).connect(gain(0.25)).connect(out);
-    lfo(0.09, 0.025, g.gain);
+    const g = gain(0.2); noise("white").connect(filter("highpass", 700)).connect(filter("lowpass", 6500)).connect(g).connect(out);
+    noise("brown").connect(filter("lowpass", 500)).connect(gain(0.3)).connect(out);
+    lfo(0.09, 0.04, g.gain);
   } else if (type === "ocean") {
-    const lp = filter("lowpass", 700), swell = gain(0.4);
+    const lp = filter("lowpass", 1100), swell = gain(0.45);
     noise("brown").connect(lp).connect(swell).connect(out);
-    lfo(0.075, 0.32, swell.gain); lfo(0.075, 300, lp.frequency);
+    lfo(0.075, 0.36, swell.gain); lfo(0.075, 600, lp.frequency);
   } else {
-    noise("brown").connect(filter("lowpass", 480)).connect(gain(0.6)).connect(out);
+    noise("brown").connect(filter("lowpass", 800)).connect(gain(0.6)).connect(out);
   }
   return { out, stop() { running.forEach(n => { try { n.stop(); } catch {} }); out.disconnect(); } };
 }
-const ambientLevel = () => (S().ambientVol / 100) * 0.7;
+const ambientLevel = () => (S().ambientVol / 100) * 3;
+let ambBus = null;
+function ambientBus(ctx) {
+  if (ambBus) return ambBus;
+  ambBus = ctx.createDynamicsCompressor();
+  ambBus.threshold.value = -12; ambBus.knee.value = 6; ambBus.ratio.value = 12; ambBus.attack.value = 0.005; ambBus.release.value = 0.25;
+  ambBus.connect(ctx.destination);
+  return ambBus;
+}
 function ambientPlay(type) {
   try {
     const ctx = actx();
@@ -249,7 +259,7 @@ function ambientPlay(type) {
     ambientStop();
     const node = buildAmbient(ctx, type), g = ctx.createGain();
     g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.linearRampToValueAtTime(ambientLevel(), ctx.currentTime + 1.5);
-    node.out.connect(g); g.connect(ctx.destination);
+    node.out.connect(g); g.connect(ambientBus(ctx));
     Object.assign(AMB, { type, gain: g, node });
   } catch {}
 }
@@ -305,7 +315,15 @@ function pomoRender() {
 function pomoStart() {
   if (P.running) return;
   P.running = true; P.endAt = Date.now() + P.remain;
-  if (P.phase === "focus") sfx("start");
+  if (P.phase === "focus") {
+    sfx("start");
+    const s = S();
+    if (!s.muted && s.ambient !== "off" && !s.ambientTipShown) {
+      const name = { river: "River", rain: "Rain", ocean: "Ocean waves", brown: "Soft noise" }[s.ambient];
+      save("settings", { ...state.settings, ambientTipShown: true });
+      toast("Background sound: " + name + ". Change it in Settings, or press Mute.");
+    }
+  }
   P.int = setInterval(pomoTick, 250); pomoRender();
 }
 function pomoPause() {
