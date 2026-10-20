@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: everything lives in this browser's localStorage ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 300, chunk: 1, punct: true, mode: "slide", size: "medium" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -389,7 +389,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowLeft") { e.preventDefault(); jumpSentence(-1); }
   else if (e.key === "ArrowRight") { e.preventDefault(); jumpSentence(1); }
   else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-    e.preventDefault(); const v = Math.min(1000, Math.max(150, S().wpm + (e.key === "ArrowUp" ? 25 : -25)));
+    e.preventDefault(); const v = Math.min(1000, Math.max(100, S().wpm + (e.key === "ArrowUp" ? 25 : -25)));
     $("wpm").value = v; $("wpm").dispatchEvent(new Event("input"));
   }
 });
