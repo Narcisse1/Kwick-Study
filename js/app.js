@@ -472,7 +472,7 @@ function loadText(title, text, sample) {
 }
 
 /* Slide mode: the line of text glides past the centre marker at the chosen speed. */
-const SL = { pos: 0, start: 0, spans: [], centers: [], cur: -1, raf: 0, last: 0 };
+const SL = { pos: 0, start: 0, spans: [], centers: [], cur: -1, raf: 0, last: 0, step: 40, mid: 0, ease: 1 };
 function renderIdle() {
   const slide = S().mode === "slide";
   $("slide").hidden = !slide; $("chunk").hidden = true; $("rsvp").hidden = slide;
@@ -485,10 +485,14 @@ function slideBuild(k) {
   const frag = document.createDocumentFragment();
   for (let i = from; i < to; i++) {
     if (i > 0 && R.paraStarts.has(i)) frag.append(el("i", "para-gap", "¶"));
-    const s = el("span", "", R.words[i]); SL.spans.push(s); frag.append(s);
+    const s = el("span", i < k ? "read" : "", R.words[i]); SL.spans.push(s); frag.append(s);
   }
   track.replaceChildren(frag);
   SL.centers = SL.spans.map(s => s.offsetLeft + s.offsetWidth * 0.4);
+  const c = SL.centers;
+  // average distance between words, used to turn words-per-minute into a steady glide speed
+  if (c.length > 1) SL.step = (c[c.length - 1] - c[0]) / (c.length - 1);
+  SL.mid = $("window").clientWidth / 2;
 }
 function slidePlace() {
   const n = R.words.length; if (!n) { $("track").replaceChildren(); return; }
@@ -496,16 +500,37 @@ function slidePlace() {
   if (!SL.spans.length || k < SL.start || k >= end || (k > end - 25 && end < n) || (k < SL.start + 5 && SL.start > 0) || !SL.centers[SL.centers.length - 1]) slideBuild(k);
   const a = SL.centers[k - SL.start], b = SL.centers[k + 1 - SL.start];
   const x = b == null ? a : a + (b - a) * Math.min(1, SL.pos - k);
-  $("track").style.transform = `translate(${$("window").clientWidth / 2 - x}px, -50%)`;
-  if (SL.cur !== k) { SL.spans.forEach((s, j) => s.className = j + SL.start < k ? "read" : j + SL.start === k ? "cur" : ""); SL.cur = k; }
+  // sub-pixel move on the GPU, so the line glides instead of stepping pixel by pixel
+  $("track").style.transform = `translate3d(${(SL.mid - x).toFixed(2)}px, -50%, 0)`;
+  if (SL.cur !== k) {
+    // only restyle the words that changed, not the whole line
+    if (k > SL.cur && SL.cur >= SL.start) { for (let i = Math.max(SL.cur, SL.start); i < k; i++) { const s = SL.spans[i - SL.start]; if (s) s.className = "read"; } }
+    else SL.spans.forEach((s, j) => s.className = j + SL.start < k ? "read" : "");
+    const s = SL.spans[k - SL.start]; if (s) s.className = "cur";
+    SL.cur = k;
+  }
+}
+// How much to slow down on the word under the marker: longer at the end of a sentence or paragraph.
+function slideSlowdown(wi) {
+  if (!S().punct) return 1;
+  const w = R.words[wi] || "";
+  if (R.paraStarts.has(wi + 1)) return 3;
+  if (/[.!?]["'”’)]*$/.test(w)) return 2.1;
+  if (/[,;:—–]["'”’)]*$/.test(w)) return 1.5;
+  return 1;
 }
 function slideFrame(t) {
   if (!R.playing) return;
-  const dt = Math.min(100, t - SL.last); SL.last = t;
-  const wi = Math.floor(SL.pos), w = R.words[wi] || "";
-  let f = w.length > 8 ? 1.25 : 1;
-  if (S().punct) { if (R.paraStarts.has(wi + 1)) f *= 3; else if (/[.!?]["'”’)]*$/.test(w)) f *= 2.1; else if (/[,;:—–]["'”’)]*$/.test(w)) f *= 1.5; }
-  SL.pos += dt * S().wpm / 60000 / f;
+  const dt = Math.min(50, t - SL.last); SL.last = t;
+  const wi = Math.floor(SL.pos);
+  // Steady speed in pixels (so short and long words pass at the same pace), eased into and out of
+  // the pauses at punctuation instead of braking and jumping.
+  const target = 1 / slideSlowdown(wi);
+  SL.ease += (target - SL.ease) * (1 - Math.exp(-dt / 160));
+  const a = SL.centers[wi - SL.start], b = SL.centers[wi + 1 - SL.start];
+  const gap = a != null && b != null && b > a ? b - a : SL.step;
+  const pxPerMs = (S().wpm / 60000) * SL.step * SL.ease;
+  SL.pos += pxPerMs * dt / gap;
   if (SL.pos >= R.words.length) { R.i = R.maxI = R.words.length; readerMeta(); return finish(); }
   const ni = Math.floor(SL.pos);
   if (ni !== R.i) { R.i = R.cur = ni; R.maxI = Math.max(R.maxI, ni); readerMeta(); ctxFollow(); }
@@ -557,7 +582,7 @@ function play() {
   try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => wake = w).catch(() => {}); } catch {}
   if (S().mode === "slide") {
     $("slide").hidden = false; $("rsvp").hidden = true; $("chunk").hidden = true;
-    SL.pos = Math.min(R.i, R.words.length - 1); SL.last = performance.now(); slidePlace();
+    SL.pos = Math.min(R.i, R.words.length - 1); SL.last = performance.now(); SL.ease = 1 / slideSlowdown(Math.floor(SL.pos)); slidePlace();
     SL.raf = requestAnimationFrame(slideFrame);
   } else step();
 }
@@ -696,7 +721,14 @@ function renderWpm() {
 $("chunkSize").onchange = e => { save("settings", { ...state.settings, chunk: +e.target.value }); };
 $("punct").onchange = e => { save("settings", { ...state.settings, punct: e.target.checked }); };
 $("mode").onchange = e => { stop(); save("settings", { ...state.settings, mode: e.target.value }); $("chunkRow").hidden = e.target.value !== "flash"; renderIdle(); };
-window.addEventListener("resize", () => { if (S().mode === "slide") { SL.spans = []; slidePlace(); } });
+// Rebuild the sliding line only when the width really changes: on phones the address bar showing
+// and hiding fires resize events (height only) all the time while scrolling.
+let lastWidth = window.innerWidth;
+window.addEventListener("resize", () => {
+  if (window.innerWidth === lastWidth) return;
+  lastWidth = window.innerWidth;
+  if (S().mode === "slide") { SL.spans = []; slidePlace(); }
+});
 if (document.fonts) document.fonts.ready.then(() => { if (S().mode === "slide") { SL.spans = []; slidePlace(); } });
 $("loadText").onclick = () => {
   const t = $("inText").value.trim();

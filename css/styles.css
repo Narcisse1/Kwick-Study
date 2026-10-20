@@ -88,8 +88,12 @@ section.tab > :first-child { border-top: 0; padding-top: 0 }
 .rsvp .p { color: var(--focus) }
 .rsvp .r { text-align: left; overflow: hidden; min-width: 0 }
 .chunk { font-family: var(--read); font-size: clamp(1.6rem, 5.4vw, 2.4rem); text-align: center; padding-inline: 8px }
-.slide { position: absolute; inset: 0; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent); mask-image: linear-gradient(90deg, transparent, #000 16%, #000 84%, transparent) }
-.track { position: absolute; left: 0; top: 50%; white-space: nowrap; font-family: var(--read); font-size: clamp(1.5rem, 4.4vw, 2.05rem); will-change: transform; transform: translate(50vw, -50%) }
+.slide { position: absolute; inset: 0; overflow: hidden; contain: strict }
+/* edge fade drawn as two fixed gradient layers above the moving line (cheaper than masking it every frame) */
+.slide::before, .slide::after { content: ""; position: absolute; top: 0; bottom: 0; width: 16%; z-index: 1; pointer-events: none }
+.slide::before { left: 0; background: linear-gradient(90deg, var(--surface), transparent) }
+.slide::after { right: 0; background: linear-gradient(270deg, var(--surface), transparent) }
+.track { position: absolute; left: 0; top: 50%; white-space: nowrap; font-family: var(--read); font-size: clamp(1.5rem, 4.4vw, 2.05rem); will-change: transform; transform: translate3d(50vw, -50%, 0); backface-visibility: hidden; -webkit-font-smoothing: antialiased }
 .track span { padding-inline: .13em; color: var(--ink) }
 .track span.read { color: var(--muted) }
 .track span.cur { color: var(--focus) }
