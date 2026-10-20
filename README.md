@@ -6,7 +6,7 @@ A speed-reading web app built around how memory works: read in Pomodoro focus ro
 
 | Step | What happens |
 | --- | --- |
-| **i. Read** | Text slides past a focus marker (or flashes one word at a time) at 100–1000 words per minute (150 by default), slowing at punctuation. Upload a PDF, `.txt` or `.md` file, or paste text. For PDFs you can pick a page range. |
+| **i. Read** | Text slides past a focus marker (or flashes one word at a time) at 100–1000 words per minute (125 by default), slowing at punctuation. Upload a PDF, `.txt` or `.md` file, or paste text. For PDFs you can pick a page range. |
 | **Pomodoro** | 25-minute focus rounds, 5-minute breaks, a 15-minute break after four rounds (all adjustable). The reader locks during breaks. |
 | **ii. Recall** | Write what you remember without looking. The app scores how many key ideas you recalled and suggests fill-in-the-blank cards for the ones you missed. |
 | **iii. Apply** | Jim Kwik's four questions: *What did I learn? How can I use this? When will I use this? Why must I use this?* Saved as a takeaway with checkups after 1, 3, 7, 14, 30, 60 and 120 days. |

@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "birds", ambientVol: 50, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "birds", ambientVol: 50, wpm: 125, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
