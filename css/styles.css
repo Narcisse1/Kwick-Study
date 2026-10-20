@@ -230,3 +230,15 @@ dialog::backdrop { background: rgb(20 20 18 / .45) }
 .notes.compare { max-width: 46ch; margin: 0 auto; border-top: 1px solid var(--line); padding-top: 12px }
 .hint.center { text-align: center; margin: 0 0 8px }
 nav.tabs::-webkit-scrollbar { display: none }
+
+/* Recall quiz */
+.sugg input.blank { font: inherit; text-align: center; border: 0; border-bottom: 2px solid var(--brand); background: var(--brand-soft); padding: 0 4px; margin: 0 3px; border-radius: 2px; color: var(--ink); max-width: 100% }
+.sugg input.blank:focus { outline: none; background: var(--surface) }
+.sugg .item:has(input.blank) { grid-template-columns: 1fr }
+.sugg .filled { padding: 0 3px; border-bottom: 2px solid currentColor }
+.sugg .filled.right { color: var(--rest) } .sugg .filled.close { color: var(--warn) } .sugg .filled.wrong { color: var(--focus) }
+.sugg .you { font-size: .88rem; font-style: italic } .sugg .you s { color: var(--muted) }
+.sugg .side { display: grid; gap: 6px; justify-items: end }
+.mark { font-variant-caps: all-small-caps; letter-spacing: .09em; font-size: .95rem }
+.mark.right { color: var(--rest) } .mark.close { color: var(--warn) } .mark.wrong { color: var(--focus) }
+.score-line { font-family: var(--display); font-size: 1.1rem }

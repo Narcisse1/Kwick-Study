@@ -549,35 +549,85 @@ $("checkRecall").onclick = () => {
   renderSuggestions(keys.filter(k => !hits.includes(k)));
   renderProgress();
 };
-function renderSuggestions(missed) {
-  const box = $("sugg"); box.replaceChildren();
-  const src = readText(), keys = keywords(src, 16), prefer = missed && missed.length ? missed : keys;
+// Quick quiz on the Recall page: fill in the blanks, check, then keep the missed ones for review.
+const QZ = { title: null, items: [], checked: false };
+function buildQuiz(missed, skip) {
+  const src = readText(), keys = keywords(src, 16), prefer = missed && missed.length ? [...missed, ...keys.filter(k => !missed.includes(k))] : keys;
   const sentences = (src.match(/[^.!?]+[.!?]+/g) || []).map(s => s.trim()).filter(s => { const n = s.split(" ").length; return n >= 7 && n <= 40; });
   const existing = new Set(Object.values(state.cards).map(c => c.front));
-  const used = new Set(), out = [];
+  const used = new Set(), items = [];
   for (const k of prefer) {
     const re = new RegExp("\\b(" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")\\b", "i");
     const s = sentences.find(x => re.test(x) && !used.has(x));
     if (!s) continue;
     used.add(s);
-    const front = s.replace(re, "_____");
-    if (!existing.has(front)) out.push({ front, back: s.match(re)[1], sentence: s });
-    if (out.length >= 4) break;
+    const front = s.replace(re, BLANK);
+    if (!existing.has(front) && !(skip && skip.has(front))) items.push({ front, back: s.match(re)[1], typed: "", result: null, added: false });
+    if (items.length >= 5) break;
   }
-  if (!out.length) { box.append(el("p", "hint", "Write your own question and answer below.")); return; }
-  out.forEach(c => {
-    const item = el("div", "item"), p = el("p");
-    const parts = c.front.split("_____");
-    p.append(parts[0], el("b", "", "_____"), parts[1] || "");
-    const b = el("button", "btn sm", "Add");
-    b.onclick = () => { addCard(c.front, c.back); b.textContent = "Added"; b.disabled = true; };
-    item.append(p, b); box.append(item);
-  });
+  Object.assign(QZ, { title: R.title, items, checked: false });
 }
-function addCard(front, back) {
+function renderSuggestions(missed) {
+  if (missed || QZ.title !== R.title) buildQuiz(missed);
+  const box = $("sugg"), actions = $("quizActions"); box.replaceChildren(); actions.replaceChildren();
+  if (!QZ.items.length) { box.append(el("p", "hint", "No sentences to quiz on yet. Write your own question and answer below.")); return; }
+  const inputs = [];
+  QZ.items.forEach((it, i) => {
+    const item = el("div", "item"), p = el("p");
+    const at = it.front.indexOf(BLANK), before = it.front.slice(0, at), after = it.front.slice(at + BLANK.length);
+    if (!QZ.checked) {
+      const inp = el("input", "blank"); inp.type = "text"; inp.value = it.typed; inp.autocomplete = "off"; inp.spellcheck = false;
+      inp.setAttribute("aria-label", "Missing word " + (i + 1)); inp.style.width = Math.max(5, it.back.length + 2) + "ch";
+      inp.addEventListener("input", () => it.typed = inp.value);
+      inp.addEventListener("keydown", e => { if (e.key !== "Enter") return; e.preventDefault(); const next = inputs[i + 1]; if (next) next.focus(); else checkQuiz(); });
+      inputs.push(inp);
+      p.append(before, inp, after);
+      item.append(p);
+    } else {
+      p.append(before, el("span", "filled " + it.result, it.back), after);
+      if (it.result !== "right") { const w = el("span", "hint you"); w.append(" You wrote ", el("s", "", it.typed.trim() || "nothing"), "."); p.append(w); }
+      const side = el("div", "side");
+      side.append(el("span", "mark " + it.result, it.result === "right" ? "Correct" : it.result === "close" ? "Almost" : "Missed"));
+      const b = el("button", "btn sm" + (it.result === "right" ? "" : " primary"), it.added ? "Added" : it.result === "right" ? "Review anyway" : "Add to review");
+      b.disabled = it.added;
+      b.onclick = () => { addQuizCard(it); renderSuggestions(); };
+      side.append(b);
+      item.append(p, side);
+    }
+    box.append(item);
+  });
+  if (!QZ.checked) {
+    const b = el("button", "btn primary", "Check my answers"); b.onclick = checkQuiz;
+    actions.append(b, el("span", "hint", "Leave a blank empty if you don't remember. Press Enter to move to the next one."));
+  } else {
+    const right = QZ.items.filter(it => it.result === "right").length, left = QZ.items.filter(it => it.result !== "right" && !it.added);
+    actions.append(el("span", "score-line", right + " of " + QZ.items.length + " right."));
+    if (left.length) {
+      const b = el("button", "btn primary", "Add " + (left.length === 1 ? "the missed one" : "all " + left.length + " missed") + " to review");
+      b.onclick = () => { left.forEach(addQuizCard); renderSuggestions(); };
+      actions.append(b);
+    } else actions.append(el("span", "hint", right === QZ.items.length ? "Every blank right. Nothing to drill." : "Missed ones are in your review deck."));
+    const again = el("button", "btn ghost", "New set of blanks"); again.onclick = () => { buildQuiz(null, new Set(QZ.items.map(it => it.front))); if (!QZ.items.length) buildQuiz(); renderSuggestions(); };
+    actions.append(again);
+  }
+}
+function checkQuiz() {
+  QZ.items.forEach(it => it.result = markAnswer(it.typed, it.back));
+  QZ.checked = true; renderSuggestions();
+}
+// A missed card is due again in 10 minutes; a correct one you keep anyway starts at one day.
+function addQuizCard(it) {
+  if (it.added) return;
+  addCard(it.front, it.back, SUGGEST[it.result]);
+  it.added = true;
+}
+function addCard(front, back, grade) {
   const id = uid();
-  save("card_" + id, { front, back, src: R.title, ease: 2.5, interval: 0, reps: 0, due: Date.now(), created: Date.now() });
-  renderReview(); renderProgress(); toast("Card added. It's due for review now.");
+  let card = { front, back, src: R.title, ease: 2.5, interval: 0, reps: 0, due: Date.now(), created: Date.now() };
+  if (grade != null) card = schedule(card, grade);
+  save("card_" + id, card);
+  renderReview(); renderProgress();
+  toast(card.due <= Date.now() + 15 * 60000 ? "Added to review. It comes back " + (card.due <= Date.now() ? "now." : "in 10 minutes.") : "Added to review. First review in " + label(card) + ".");
 }
 $("addCard").onclick = () => {
   const f = $("cFront").value.trim(), b = $("cBack").value.trim();
