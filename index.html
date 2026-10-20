@@ -75,9 +75,13 @@
             <button class="play" id="play" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
             <button class="btn round" id="fwd" aria-label="Forward one sentence" title="Forward one sentence (→)"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
           </div>
-          <div class="speed">
-            <div class="row" style="justify-content:space-between"><label class="label" for="wpm">Speed</label><output id="wpmOut">150 wpm</output></div>
-            <input type="range" id="wpm" min="100" max="1000" step="25" value="150">
+          <div class="speed" role="group" aria-labelledby="speedLabel">
+            <span class="label" id="speedLabel">Speed</span>
+            <div class="stepper">
+              <button type="button" class="btn round" id="wpmDown" aria-label="Slower by 25 words per minute">−</button>
+              <output id="wpmOut" aria-live="polite">150 wpm</output>
+              <button type="button" class="btn round" id="wpmUp" aria-label="Faster by 25 words per minute">+</button>
+            </div>
           </div>
           <div class="opts">
             <label for="mode">Mode <select id="mode"><option value="slide">Slide</option><option value="flash">Flash</option></select></label>
@@ -85,7 +89,7 @@
             <label><input type="checkbox" id="punct" checked> Pause at punctuation</label>
           </div>
         </div>
-        <p class="hint" style="margin:0"><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> sentence · <kbd>↑</kbd> <kbd>↓</kbd> speed. Click any word in the passage below to start from there.</p>
+        <p class="hint" style="margin:0"><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> sentence · <kbd>↑</kbd> <kbd>↓</kbd> speed.</p>
       </div>
 
       <div class="panel" id="contextPanel">

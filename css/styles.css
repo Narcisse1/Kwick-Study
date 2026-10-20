@@ -105,7 +105,10 @@ section.tab > :first-child { border-top: 0; padding-top: 0 }
 .play svg { width: 20px; height: 20px; fill: currentColor }
 .round { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; padding: 0 }
 .round svg { width: 14px; height: 14px; fill: currentColor }
-.speed { display: grid; gap: 0; min-width: 200px; flex: 1 1 220px; max-width: 320px }
+.speed { display: grid; gap: 6px; justify-items: start }
+.stepper { display: flex; align-items: center; gap: 12px }
+.stepper .btn.round { font-family: var(--body); font-size: 1.35rem; line-height: 1; width: 40px; height: 40px; user-select: none; -webkit-user-select: none; touch-action: manipulation }
+.stepper output { min-width: 5.5ch; text-align: center }
 .speed output { font-family: var(--display); font-size: 1.05rem; font-variant-numeric: lining-nums tabular-nums }
 input[type=range] { width: 100%; accent-color: var(--brand) }
 .opts { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center; font-size: .95rem }

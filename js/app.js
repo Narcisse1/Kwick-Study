@@ -512,7 +512,30 @@ function onFocusEnd(natural) {
 $("play").onclick = () => R.playing ? stop() : play();
 $("back").onclick = () => jumpSentence(-1);
 $("fwd").onclick = () => jumpSentence(1);
-$("wpm").oninput = e => { state.settings = { ...state.settings, wpm: +e.target.value }; $("wpmOut").textContent = e.target.value + " wpm"; readerMeta(); saveLater("settings", () => state.settings); };
+// Speed is changed in steps of 25 wpm with the − / + buttons (hold to repeat) or the ↑ ↓ keys.
+const WPM_MIN = 100, WPM_MAX = 1000, WPM_STEP = 25;
+function setWpm(v) {
+  v = Math.min(WPM_MAX, Math.max(WPM_MIN, Math.round(v / WPM_STEP) * WPM_STEP));
+  if (v === S().wpm) return;
+  state.settings = { ...state.settings, wpm: v };
+  renderWpm(); readerMeta(); saveLater("settings", () => state.settings);
+}
+function renderWpm() {
+  const v = S().wpm;
+  $("wpmOut").textContent = v + " wpm";
+  $("wpmDown").disabled = v <= WPM_MIN; $("wpmUp").disabled = v >= WPM_MAX;
+}
+[["wpmDown", -1], ["wpmUp", 1]].forEach(([id, dir]) => {
+  const btn = $(id); let hold = null, rep = null;
+  const stopHold = () => { clearTimeout(hold); clearInterval(rep); };
+  btn.addEventListener("pointerdown", e => {
+    if (e.button) return;
+    setWpm(S().wpm + dir * WPM_STEP);
+    hold = setTimeout(() => { rep = setInterval(() => setWpm(S().wpm + dir * WPM_STEP), 140); }, 450);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(t => btn.addEventListener(t, stopHold));
+  btn.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); setWpm(S().wpm + dir * WPM_STEP); } });
+});
 $("chunkSize").onchange = e => { save("settings", { ...state.settings, chunk: +e.target.value }); };
 $("punct").onchange = e => { save("settings", { ...state.settings, punct: e.target.checked }); };
 $("mode").onchange = e => { stop(); save("settings", { ...state.settings, mode: e.target.value }); $("chunkSize").disabled = e.target.value === "slide"; renderIdle(); };
@@ -720,7 +743,7 @@ document.addEventListener("keydown", e => {
   else if (e.key === "ArrowRight") { e.preventDefault(); jumpSentence(1); }
   else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
     e.preventDefault(); const v = Math.min(1000, Math.max(100, S().wpm + (e.key === "ArrowUp" ? 25 : -25)));
-    $("wpm").value = v; $("wpm").dispatchEvent(new Event("input"));
+    setWpm(v);
   }
 });
 
@@ -1177,7 +1200,7 @@ $("settings").addEventListener("close", () => {
 });
 function applySettings() {
   const s = S(); applySize(); applyTheme(); renderMute();
-  $("wpm").value = s.wpm; $("wpmOut").textContent = s.wpm + " wpm";
+  renderWpm();
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
   $("mode").value = s.mode; $("chunkSize").disabled = s.mode === "slide";
   if (!R.playing && R.words.length) renderIdle();
