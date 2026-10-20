@@ -272,3 +272,13 @@ nav.tabs::-webkit-scrollbar { display: none }
 
 #uploadGate { width: min(420px, calc(100vw - 32px)) }
 #uploadGate .btn { width: 100% }
+
+/* Upload status: red with animated dots while a file is being opened */
+.file-status { font-size: .95rem; color: var(--muted) }
+.file-status.busy, .file-status.error { color: var(--focus) }
+.file-status.busy { font-weight: 600 }
+.file-status.busy::after { content: "..."; display: inline-block; width: 0; overflow: hidden; vertical-align: bottom; animation: dots 1.2s steps(4, end) infinite }
+.file-status.done { color: var(--rest) }
+@keyframes dots { to { width: 1.1em } }
+@media (prefers-reduced-motion: reduce) { .file-status.busy::after { width: auto; animation: none } }
+.btn.is-busy { opacity: .55; cursor: progress; pointer-events: none }

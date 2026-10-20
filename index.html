@@ -125,7 +125,7 @@
           <span class="hint">Drop a file here, or choose one. PDF, .txt and .md work. Scanned PDFs without selectable text can't be read.</span>
           <label class="btn primary" for="file" id="uploadBtn">Upload file</label>
           <input type="file" id="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" hidden>
-          <span class="hint" id="fileStatus" aria-live="polite"></span>
+          <span class="file-status" id="fileStatus" role="status" aria-live="polite"></span>
         </div>
         <div class="row" id="pageRange" hidden>
           <label for="pFrom">Pages</label><input type="number" id="pFrom" min="1">

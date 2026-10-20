@@ -673,7 +673,7 @@ async function readPdf(file) {
   const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
   const pages = [];
   for (let p = 1; p <= doc.numPages; p++) {
-    $("fileStatus").textContent = "Reading page " + p + " of " + doc.numPages + "…";
+    fileStatus("Reading page " + p + " of " + doc.numPages, "busy");
     const tc = await (await doc.getPage(p)).getTextContent();
     let s = "", prev = null;
     for (const it of tc.items) {
@@ -802,29 +802,39 @@ function renderLibrary() {
   });
 }
 
+// Status line under the upload button: red with moving dots while working, red for problems, green when done.
+function fileStatus(text, kind) {
+  const el = $("fileStatus");
+  el.textContent = text; el.className = "file-status " + (kind || "");
+  const busy = kind === "busy";
+  $("uploadBtn").classList.toggle("is-busy", busy); $("uploadBtn").setAttribute("aria-disabled", busy);
+  $("drop").setAttribute("aria-busy", busy);
+}
 async function handleFile(f) {
+  if ($("uploadBtn").classList.contains("is-busy")) return;
   if (!f) return;
   const name = f.name.replace(/\.[^.]+$/, ""), isPdf = /\.pdf$/i.test(f.name) || f.type === "application/pdf";
   const isText = /\.(txt|md|markdown|text)$/i.test(f.name) || f.type.startsWith("text/");
-  if (!isPdf && !isText) { $("fileStatus").textContent = "That file type isn't supported. Use a PDF, .txt or .md file."; return; }
+  if (!isPdf && !isText) { fileStatus("That file type isn't supported. Use a PDF, .txt or .md file.", "error"); return; }
   stop(); $("pageRange").hidden = true;
   try {
     if (isPdf) {
-      $("fileStatus").textContent = "Opening PDF…";
+      fileStatus("Opening PDF", "busy");
       const pages = await readPdf(f);
       const words = parse(pages.join(" ")).length;
-      if (words < 10) { $("fileStatus").textContent = "No selectable text found. This PDF is probably a scan or images."; return; }
+      if (words < 10) { fileStatus("No selectable text found. This PDF is probably a scan or images.", "error"); return; }
       await libOpen(await libAdd(name, "pdf", pages));
-      $("fileStatus").textContent = "Loaded " + f.name + ": " + pages.length + " page" + (pages.length > 1 ? "s" : "") + ", " + words.toLocaleString() + " words." + (pages.length > 1 ? " Choose a page range below to read one section per round." : "");
+      fileStatus("Loaded " + f.name + ": " + pages.length + " page" + (pages.length > 1 ? "s" : "") + ", " + words.toLocaleString() + " words." + (pages.length > 1 ? " Choose a page range below to read one section per round." : ""), "done");
     } else {
+      fileStatus("Opening " + f.name, "busy");
       const text = await f.text();
-      if (parse(text).length < 10) { $("fileStatus").textContent = "That file has too little text to read."; return; }
+      if (parse(text).length < 10) { fileStatus("That file has too little text to read.", "error"); return; }
       await libOpen(await libAdd(name, "text", [text]));
-      $("fileStatus").textContent = "Loaded " + f.name + ": " + R.words.length.toLocaleString() + " words.";
+      fileStatus("Loaded " + f.name + ": " + R.words.length.toLocaleString() + " words.", "done");
     }
     toast("Loaded and saved to your library. Press Space to start."); window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (e) {
-    $("fileStatus").textContent = "Couldn't read that file. If it's a PDF, check it isn't password-protected, then try again.";
+    fileStatus("Couldn't read that file. If it's a PDF, check it isn't password-protected, then try again.", "error");
   }
 }
 $("file").onchange = e => { handleFile(e.target.files[0]); e.target.value = ""; };
@@ -836,7 +846,7 @@ function gateNeeded() {
   try { return !sessionStorage.getItem(SKIP_KEY); } catch { return true; }
 }
 function openGate(file) { UG.file = file || null; UG.wanted = true; $("uploadGate").showModal(); }
-$("uploadBtn").addEventListener("click", e => { if (gateNeeded()) { e.preventDefault(); openGate(null); } });
+$("uploadBtn").addEventListener("click", e => { if ($("uploadBtn").classList.contains("is-busy")) { e.preventDefault(); return; } if (gateNeeded()) { e.preventDefault(); openGate(null); } });
 $("gateSkip").onclick = () => {
   try { sessionStorage.setItem(SKIP_KEY, "1"); } catch {}
   $("uploadGate").close(); UG.wanted = false;
