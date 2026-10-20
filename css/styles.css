@@ -118,7 +118,7 @@ input[type=checkbox] { accent-color: var(--brand); width: 15px; height: 15px }
 .prime { font-style: italic; color: var(--muted); font-size: .93rem; text-align: center; border-top: 1px solid var(--line); padding-top: 10px }
 .prime b { font-style: normal; font-weight: 400; font-variant-caps: all-small-caps; letter-spacing: .1em; color: var(--brand); margin-right: 4px }
 
-.context { font-family: var(--read); font-size: 1.06rem; line-height: 1.7; max-width: 64ch; max-height: 300px; overflow-y: auto; hyphens: manual; text-align: left }
+.context { position: relative; font-family: var(--read); font-size: 1.06rem; line-height: 1.7; max-width: 64ch; max-height: 300px; overflow-y: auto; hyphens: manual; text-align: left }
 .context span { cursor: pointer }
 .context span:hover { text-decoration: underline; text-decoration-color: var(--focus); text-underline-offset: 3px }
 .context span.read { color: var(--muted) }

@@ -439,7 +439,7 @@ $("pomoToggle").onclick = () => P.running ? pomoPause() : pomoStart();
 $("pomoSkip").onclick = () => pomoComplete(false);
 
 /* ---------- Reader ---------- */
-const R = { title: SAMPLE_TITLE, text: SAMPLE, words: [], i: 0, playing: false, t: null, activeMs: 0, since: 0, maxI: 0, session: null, sample: true, paraStarts: new Set() };
+const R = { title: SAMPLE_TITLE, text: SAMPLE, words: [], i: 0, playing: false, t: null, activeMs: 0, since: 0, maxI: 0, cur: 0, session: null, sample: true, paraStarts: new Set() };
 function parse(text) { return text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean); }
 // Split text into paragraphs. Blank lines separate paragraphs. Without any blank lines, a line break
 // after the end of a sentence starts a new paragraph, while a break mid-sentence is just a wrapped line.
@@ -455,7 +455,7 @@ function loadText(title, text, sample) {
   LIB.id = null;
   R.title = title || "Untitled text"; R.text = text; R.words = []; R.paraStarts = new Set();
   paragraphs(text).forEach(p => { R.paraStarts.add(R.words.length); R.words.push(...p.split(" ")); });
-  R.i = 0; R.maxI = 0; R.activeMs = 0; R.session = null; R.sample = !!sample;
+  R.i = 0; R.cur = 0; R.maxI = 0; R.activeMs = 0; R.session = null; R.sample = !!sample;
   $("docTitle").textContent = R.title;
   $("docInfo").textContent = (sample ? "Sample passage · " : "") + R.words.length.toLocaleString() + " words";
   $("recallText").value = ""; $("recallResult").hidden = true;
@@ -499,7 +499,7 @@ function slideFrame(t) {
   SL.pos += dt * S().wpm / 60000 / f;
   if (SL.pos >= R.words.length) { R.i = R.maxI = R.words.length; readerMeta(); return finish(); }
   const ni = Math.floor(SL.pos);
-  if (ni !== R.i) { R.i = ni; R.maxI = Math.max(R.maxI, ni); readerMeta(); }
+  if (ni !== R.i) { R.i = R.cur = ni; R.maxI = Math.max(R.maxI, ni); readerMeta(); ctxFollow(); }
   slidePlace();
   SL.raf = requestAnimationFrame(slideFrame);
 }
@@ -525,7 +525,8 @@ function step() {
   if (!R.playing) return;
   if (R.i >= R.words.length) return finish();
   const n = S().chunk, chunk = R.words.slice(R.i, R.i + n);
-  showWord(chunk.join(" ")); R.i += chunk.length; R.maxI = Math.max(R.maxI, R.i);
+  showWord(chunk.join(" ")); R.cur = R.i + chunk.length - 1; R.i += chunk.length; R.maxI = Math.max(R.maxI, R.i);
+  ctxFollow();
   readerMeta();
   R.t = setTimeout(step, delayFor(chunk, R.i));
 }
@@ -533,7 +534,7 @@ let wake = null;
 function play() {
   if (R.playing || !R.words.length) return;
   if (isLocked()) { toast("It's break time. Rest your eyes."); return; }
-  if (R.i >= R.words.length) { R.i = 0; }
+  if (R.i >= R.words.length) { R.i = R.cur = 0; }
   if (P.phase === "focus" && !P.running) pomoStart();
   R.playing = true; R.since = performance.now();
   ambientUpdate();
@@ -543,7 +544,7 @@ function play() {
     save("settings", { ...state.settings, ambientTipShown: true });
     toast("Background sound: " + name + ", while you read. Change it or mute it under Sound ▾ at the top.");
   }
-  $("contextPanel").hidden = true; setPlayIcon();
+  setPlayIcon();
   try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => wake = w).catch(() => {}); } catch {}
   if (S().mode === "slide") {
     $("slide").hidden = false; $("rsvp").hidden = true; $("chunk").hidden = true;
@@ -578,11 +579,11 @@ function recordSession() {
 }
 function sentenceStarts() { const s = [0]; R.words.forEach((w, i) => { if (/[.!?]["'”’)]*$/.test(w) && i + 1 < R.words.length) s.push(i + 1); }); return s; }
 function jumpSentence(dir) {
-  const s = sentenceStarts(), cur = Math.max(0, R.i - 1);
+  const s = sentenceStarts(), cur = R.cur || 0;
   let k = s.findIndex(x => x > cur); if (k === -1) k = s.length;
   let target = dir < 0 ? s[Math.max(0, k - 2)] : s[Math.min(s.length - 1, k)];
   if (dir > 0 && k >= s.length) target = R.words.length - 1;
-  R.i = target;
+  R.i = R.cur = target;
   if (S().mode === "slide") { SL.pos = Math.min(R.i, R.words.length - 1); slidePlace(); } else showWord(R.words[R.i] || "", !R.playing);
   readerMeta(); if (!R.playing) { buildContext(); libSavePos(); }
 }
@@ -592,10 +593,11 @@ function readerMeta() {
   $("pos").textContent = R.i.toLocaleString() + " / " + n.toLocaleString() + " words";
   $("left").textContent = mmss((n - R.i) / S().wpm * 60000 * 1.15) + " left at " + S().wpm + " wpm";
 }
+const CTX = { spans: new Map(), from: 0, to: 0, cur: -1 };
 function buildContext() {
-  const box = $("context"); box.replaceChildren();
+  const box = $("context"); box.replaceChildren(); CTX.spans.clear();
   const frag = document.createDocumentFragment();
-  const c = Math.max(0, R.i - 1);
+  const c = Math.min(R.cur || 0, Math.max(0, R.words.length - 1));
   // Show whole paragraphs around the current word (about 1,000 words), keeping the original breaks.
   let from = Math.max(0, c - 300), to = Math.min(R.words.length, c + 700);
   while (from > 0 && !R.paraStarts.has(from)) from--;
@@ -604,15 +606,35 @@ function buildContext() {
   if (from > 0) para.append("… ");
   for (let i = from; i < to; i++) {
     if (i > from && R.paraStarts.has(i)) { frag.append(para); para = el("p"); }
-    const s = el("span", i < R.i - 1 ? "read" : i === c && R.i > 0 ? "cur" : "", R.words[i]);
-    s.dataset.i = i; para.append(s, " ");
+    const s = el("span", i < c ? "read" : i === c ? "cur" : "", R.words[i]);
+    s.dataset.i = i; para.append(s, " "); CTX.spans.set(i, s);
   }
   if (to < R.words.length) para.append("…");
   frag.append(para);
   box.append(frag);
-  const cur = box.querySelector(".cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
+  Object.assign(CTX, { from, to, cur: c });
+  ctxScroll(CTX.spans.get(c), false);
 }
-$("context").onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; R.i = +i; renderIdle(); readerMeta(); buildContext(); libSavePos(); };
+// Keep the current word in view inside the passage box (never scrolls the page itself).
+function ctxScroll(span, smooth) {
+  const box = $("context"); if (!span || box.offsetParent === null) return;
+  const top = span.offsetTop, h = box.clientHeight;
+  // keep the current line in the upper part of the box, so it stays visible even on short screens
+  if (top < box.scrollTop + 8 || top > box.scrollTop + h * 0.4) {
+    const reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    box.scrollTo({ top: Math.max(0, top - h * 0.15), behavior: smooth && !reduce ? "smooth" : "auto" });
+  }
+}
+// While reading: move the highlight to the current word.
+function ctxFollow() {
+  const c = Math.min(R.cur, R.words.length - 1);
+  if (c === CTX.cur) return;
+  if (c < CTX.from || c >= CTX.to || c < CTX.cur) { buildContext(); return; }
+  for (let i = Math.max(CTX.cur, CTX.from); i < c; i++) { const s = CTX.spans.get(i); if (s) s.className = "read"; }
+  const s = CTX.spans.get(c); if (s) s.className = "cur";
+  CTX.cur = c; ctxScroll(s, true);
+}
+$("context").onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; R.i = R.cur = +i; renderIdle(); readerMeta(); buildContext(); libSavePos(); };
 function showOverlay(title, text, btnText, fn) {
   const o = $("overlay"); o.replaceChildren(el("strong", "", title), el("span", "hint", text));
   if (btnText) { const b = el("button", "btn primary", btnText); b.onclick = fn; const w = el("div"); w.append(b); o.append(w); }
@@ -809,7 +831,7 @@ async function libOpen(id, range) {
   loadPdfPages(from, to);
   LIB.id = id;
   const pos = range || (m.pos || 0) >= R.words.length - 1 ? 0 : (m.pos || 0);
-  if (pos) { R.i = pos; renderIdle(); buildContext(); readerMeta(); }
+  if (pos) { R.i = R.cur = pos; renderIdle(); buildContext(); readerMeta(); }
   $("pageRange").hidden = n <= 1;
   if (n > 1) { $("pFrom").value = from; $("pTo").value = to; $("pFrom").max = $("pTo").max = n; $("pOf").textContent = "of " + n; }
   save("lib_" + id, { ...m, from, to, pos, rangeWords: R.words.length, opened: Date.now() });
