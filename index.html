@@ -324,6 +324,18 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script src="js/config.js"></script>
+<script>
+  // Offline support. Registered here, not in app.js, so it still runs if an old script fails.
+  // When a new version takes over a page that was running an older one, reload once so the
+  // page and its scripts are from the same version.
+  if ("serviceWorker" in navigator && location.protocol !== "file:") {
+    var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (hadController && !reloaded) { reloaded = true; location.reload(); }
+    });
+    navigator.serviceWorker.register("sw.js").catch(function () {});
+  }
+</script>
 <script src="js/app.js"></script>
 </body>
 </html>
