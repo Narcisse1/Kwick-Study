@@ -5,8 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kwick-Study</title>
 <meta name="description" content="Speed reading with Pomodoro focus rounds, recall checks, spaced-repetition flashcards and What/How/When/Why takeaways.">
-<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#12161f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#12161f" id="themeColor">
+<script>
+  // Apply the saved theme before the page paints (dark unless the person chose otherwise).
+  (function () {
+    var t = "dark";
+    try { t = (JSON.parse(localStorage.getItem("kwick-study-v1") || "{}").settings || {}).theme || "dark"; } catch (e) {}
+    if (t === "auto") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -27,6 +35,7 @@
       <span class="dots" id="dots" title="Focus round in the current set"></span>
       <button class="btn primary sm" id="pomoToggle">Start</button>
       <button class="btn sm" id="pomoSkip" title="Skip to the next phase">Skip</button>
+      <button class="btn ghost sm" id="themeToggle" aria-label="Switch to light mode">Light mode</button>
       <button class="btn ghost sm" id="openSettings" aria-label="Timer settings">Settings</button>
       <button class="btn sm" id="openAccount">Sign in</button>
     </div>
@@ -75,11 +84,11 @@
             <label><input type="checkbox" id="punct" checked> Pause at punctuation</label>
           </div>
         </div>
-        <p class="hint" style="margin:0"><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> sentence · <kbd>↑</kbd> <kbd>↓</kbd> speed. Pausing shows the passage; click a word to jump there.</p>
+        <p class="hint" style="margin:0"><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> sentence · <kbd>↑</kbd> <kbd>↓</kbd> speed. Click any word in the passage below to start from there.</p>
       </div>
 
-      <div class="panel" id="contextPanel" hidden>
-        <div class="label" style="margin-bottom:8px">Passage</div>
+      <div class="panel" id="contextPanel">
+        <div class="row" style="justify-content:space-between;margin-bottom:8px"><div class="label">Passage</div><span class="hint">Click any word to start reading from there.</span></div>
         <div class="context" id="context"></div>
       </div>
 
@@ -272,6 +281,7 @@
       <label for="sLock">Pause the reader during breaks</label><input type="checkbox" id="sLock">
       <label for="sRecallPrompt">Ask for recall when focus ends</label><input type="checkbox" id="sRecallPrompt">
       <label for="sSound">Chime at the end of each phase</label><input type="checkbox" id="sSound">
+      <label for="sTheme">Appearance</label><select id="sTheme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Match my device</option></select>
       <label for="sSize">Text size</label><select id="sSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select>
     </div>
     <div class="label" style="margin-top:6px">Your data</div>

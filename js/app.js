@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "dark" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -252,7 +252,7 @@ function loadText(title, text, sample) {
   $("docTitle").textContent = R.title;
   $("docInfo").textContent = (sample ? "Sample passage · " : "") + R.words.length.toLocaleString() + " words";
   $("recallText").value = ""; $("recallResult").hidden = true;
-  SL.spans = []; renderIdle(); buildContext(); readerMeta(); renderRecall();
+  SL.spans = []; renderIdle(); buildContext(); $("contextPanel").hidden = false; readerMeta(); renderRecall();
 }
 
 /* Slide mode: the line of text glides past the centre marker at the chosen speed. */
@@ -1036,12 +1036,29 @@ document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => swit
 const SET_FIELDS = { sFocus: "focus", sShort: "short", sLong: "long", sEvery: "every" };
 const SET_CHECKS = { sAutoBreak: "autoBreak", sLock: "lock", sRecallPrompt: "recallPrompt", sSound: "sound" };
 const applySize = () => document.documentElement.dataset.size = S().size;
+// Theme: dark by default; "auto" follows the device and switches when the device does.
+const darkQuery = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
+function applyTheme() {
+  let t = S().theme;
+  if (t === "auto") t = darkQuery && darkQuery.matches ? "dark" : "light";
+  document.documentElement.dataset.theme = t;
+  $("themeColor").content = t === "dark" ? "#12161f" : "#f6f7f9";
+  const next = t === "dark" ? "light" : "dark";
+  $("themeToggle").textContent = next === "light" ? "Light mode" : "Dark mode";
+  $("themeToggle").setAttribute("aria-label", "Switch to " + next + " mode");
+}
+$("themeToggle").onclick = () => {
+  const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  save("settings", { ...state.settings, theme: next }); applyTheme(); $("sTheme").value = next;
+};
+if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", () => { if (S().theme === "auto") applyTheme(); });
+$("sTheme").onchange = e => { save("settings", { ...state.settings, theme: e.target.value }); applyTheme(); };
 $("sSize").onchange = e => { save("settings", { ...state.settings, size: e.target.value }); applySize(); SL.spans = []; renderIdle(); };
 $("openSettings").onclick = () => {
   const s = S();
   for (const [id, k] of Object.entries(SET_FIELDS)) $(id).value = s[k];
   for (const [id, k] of Object.entries(SET_CHECKS)) $(id).checked = s[k];
-  $("sSize").value = s.size;
+  $("sSize").value = s.size; $("sTheme").value = s.theme;
   $("settings").showModal();
 };
 $("settings").addEventListener("close", () => {
@@ -1054,7 +1071,7 @@ $("settings").addEventListener("close", () => {
   pomoRender();
 });
 function applySettings() {
-  const s = S(); applySize();
+  const s = S(); applySize(); applyTheme();
   $("wpm").value = s.wpm; $("wpmOut").textContent = s.wpm + " wpm";
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
   $("mode").value = s.mode; $("chunkSize").disabled = s.mode === "slide";
