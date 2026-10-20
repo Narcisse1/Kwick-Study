@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "river", ambientVol: 50, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "birds", ambientVol: 50, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -181,14 +181,41 @@ function actx() {
 // Short notification sounds. Each is a few soft notes: [frequency, start offset s, length s, wave].
 const SFX = {
   start:    [[523, 0, .18, "sine"], [784, .12, .3, "sine"]],
-  focusEnd: [[660, 0, .5, "sine"], [880, .22, .6, "sine"]],
-  breakEnd: [[880, 0, .45, "sine"], [660, .22, .45, "sine"], [523, .44, .6, "sine"]],
   correct:  [[880, 0, .2, "triangle"], [1320, .1, .35, "triangle"]],
   close:    [[660, 0, .3, "triangle"]],
   wrong:    [[247, 0, .22, "sine"], [196, .14, .35, "sine"]],
   finish:   [[523, 0, .3, "sine"], [659, .14, .3, "sine"], [784, .28, .3, "sine"], [1047, .42, .6, "sine"]],
   save:     [[988, 0, .12, "sine"]],
 };
+// A soft bell for "time's up": a struck tone with a few inharmonic partials, like a small singing bowl.
+function bell(notes) {
+  const s = S(); if (s.muted || !s.sound) return;
+  try {
+    const ctx = actx(), now = ctx.currentTime;
+    notes.forEach(([f, at]) => {
+      [[1, 0.22, 3.2], [2.76, 0.09, 1.6], [5.4, 0.04, 0.9], [8.93, 0.02, 0.5]].forEach(([mult, vol, decay]) => {
+        const o = ctx.createOscillator(), g = ctx.createGain(), t = now + at;
+        o.type = "sine"; o.frequency.value = f * mult; o.connect(g); g.connect(ctx.destination);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + decay);
+        o.start(t); o.stop(t + decay + 0.05);
+      });
+    });
+  } catch {}
+}
+// When a timer runs out: ring the bell, and if the page is in the background, show a desktop notification.
+function timeUp(title, body, notes) {
+  bell(notes);
+  if (!document.hidden || !("Notification" in window) || Notification.permission !== "granted") return;
+  const opts = { body, icon: "icons/icon-192.png", tag: "kwick-timer" };
+  (navigator.serviceWorker ? navigator.serviceWorker.getRegistration() : Promise.resolve(null))
+    .then(reg => reg ? reg.showNotification(title, opts) : new Notification(title, opts))
+    .catch(() => { try { new Notification(title, opts); } catch {} });
+}
+function askNotifyOnce() {
+  if (!("Notification" in window) || Notification.permission !== "default" || S().notifyAsked) return;
+  save("settings", { ...state.settings, notifyAsked: true });
+  Notification.requestPermission().catch(() => {});
+}
 function sfx(name) {
   const s = S(); if (s.muted || !s.sound || !SFX[name]) return;
   try {
@@ -303,11 +330,11 @@ function ambientStop() {
   setTimeout(() => { node.stop(); g.disconnect(); }, 1100);
   Object.assign(AMB, { type: null, gain: null, node: null });
 }
-// Background sound plays during focus rounds only, and never when muted.
+// Background sound plays only while the reader is actually running, and never when muted.
 function ambientUpdate() {
   if (AMB.preview) return;
   const s = S();
-  if (!s.muted && s.ambient !== "off" && P.running && P.phase === "focus") ambientPlay(s.ambient); else ambientStop();
+  if (!s.muted && s.ambient !== "off" && R.playing) ambientPlay(s.ambient); else ambientStop();
 }
 function ambientPreview() {
   clearTimeout(AMB.preview); AMB.preview = null;
@@ -375,15 +402,7 @@ function pomoRender() {
 function pomoStart() {
   if (P.running) return;
   P.running = true; P.endAt = Date.now() + P.remain;
-  if (P.phase === "focus") {
-    sfx("start");
-    const s = S();
-    if (!s.muted && s.ambient !== "off" && !s.ambientTipShown) {
-      const name = { river: "River", rain: "Rain", ocean: "Ocean waves", birds: "Birds", brown: "Soft noise" }[s.ambient];
-      save("settings", { ...state.settings, ambientTipShown: true });
-      toast("Background sound: " + name + ". Change it or mute it under Sound ▾ at the top.");
-    }
-  }
+  if (P.phase === "focus") { sfx("start"); askNotifyOnce(); }
   P.int = setInterval(pomoTick, 250); pomoRender();
 }
 function pomoPause() {
@@ -404,11 +423,12 @@ function pomoComplete(natural) {
     }
     P.round += 1;
     P.phase = P.round >= S().every ? "long" : "short";
-    sfx("focusEnd");
+    if (natural) timeUp("Focus round done", "Time for a " + S()[P.phase] + "-minute break.", [[880, 0], [660, 0.7]]);
     onFocusEnd(natural);
   } else {
     if (P.phase === "long") P.round = 0;
-    P.phase = "focus"; sfx("breakEnd");
+    if (natural) timeUp(was === "long" ? "Long break over" : "Break over", "Ready for the next focus round.", [[660, 0], [880, 0.7], [1047, 1.4]]);
+    P.phase = "focus";
     toast("Break over. Ready for the next round.");
   }
   P.remain = dur(P.phase);
@@ -503,6 +523,13 @@ function play() {
   if (R.i >= R.words.length) { R.i = 0; }
   if (P.phase === "focus" && !P.running) pomoStart();
   R.playing = true; R.since = performance.now();
+  ambientUpdate();
+  const s = S();
+  if (!s.muted && s.ambient !== "off" && !s.ambientTipShown) {
+    const name = { river: "River", rain: "Rain", ocean: "Ocean waves", birds: "Birds", brown: "Soft noise" }[s.ambient];
+    save("settings", { ...state.settings, ambientTipShown: true });
+    toast("Background sound: " + name + ", while you read. Change it or mute it under Sound ▾ at the top.");
+  }
   $("contextPanel").hidden = true; setPlayIcon();
   try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => wake = w).catch(() => {}); } catch {}
   if (S().mode === "slide") {
@@ -514,6 +541,7 @@ function play() {
 function stop() {
   if (!R.playing) return;
   R.playing = false; clearTimeout(R.t); cancelAnimationFrame(SL.raf); R.activeMs += performance.now() - R.since;
+  ambientUpdate();
   setPlayIcon(); buildContext(); $("contextPanel").hidden = false;
   try { wake && wake.release(); wake = null; } catch {}
   libSavePos();

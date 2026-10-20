@@ -1,5 +1,5 @@
 // Offline support: the app shell is cached on install; fonts and the PDF reader (pdf.js) are cached the first time they load.
-const VERSION = "kwick-study-v12";
+const VERSION = "kwick-study-v13";
 const SHELL = [
   "./", "index.html", "css/styles.css", "js/config.js", "js/app.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/logo.svg", "icons/icon-192.png", "icons/icon-512.png",
@@ -33,4 +33,12 @@ self.addEventListener("fetch", e => {
     if (res.ok || res.type === "opaque") { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
     return res;
   })));
+});
+
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
+    const open = list.find(c => "focus" in c);
+    return open ? open.focus() : self.clients.openWindow("./");
+  }));
 });
