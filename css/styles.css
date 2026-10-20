@@ -282,3 +282,8 @@ nav.tabs::-webkit-scrollbar { display: none }
 @keyframes dots { to { width: 1.1em } }
 @media (prefers-reduced-motion: reduce) { .file-status.busy::after { width: auto; animation: none } }
 .btn.is-busy { opacity: .55; cursor: progress; pointer-events: none }
+
+/* Paragraphs in the passage and in the sliding line */
+.context p { margin: 0 0 .85em }
+.context p:last-child { margin-bottom: 0 }
+.track .para-gap { font-style: normal; color: var(--line); padding-inline: .9em; font-size: .8em; vertical-align: middle }

@@ -439,13 +439,23 @@ $("pomoToggle").onclick = () => P.running ? pomoPause() : pomoStart();
 $("pomoSkip").onclick = () => pomoComplete(false);
 
 /* ---------- Reader ---------- */
-const R = { title: SAMPLE_TITLE, text: SAMPLE, words: [], i: 0, playing: false, t: null, activeMs: 0, since: 0, maxI: 0, session: null, sample: true };
+const R = { title: SAMPLE_TITLE, text: SAMPLE, words: [], i: 0, playing: false, t: null, activeMs: 0, since: 0, maxI: 0, session: null, sample: true, paraStarts: new Set() };
 function parse(text) { return text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean); }
+// Split text into paragraphs. Blank lines separate paragraphs. Without any blank lines, a line break
+// after the end of a sentence starts a new paragraph, while a break mid-sentence is just a wrapped line.
+function paragraphs(text) {
+  const t = text.replace(/\r\n?/g, "\n").trim();
+  if (!t) return [];
+  const blocks = /\n[ \t]*\n/.test(t) ? t.split(/\n[ \t]*\n+/) : t.split(/(?<=[.!?:"”’)\]][ \t]*)\n/);
+  return blocks.map(b => b.replace(/(\p{L})-\n(\p{Ll})/gu, "$1$2").replace(/\s+/g, " ").trim()).filter(Boolean);
+}
 function loadText(title, text, sample) {
   stop();
   if (LIB.posTimer) { clearTimeout(LIB.posTimer); const id = LIB.id, m = state.library[id]; if (m && m.pos !== R.i) save("lib_" + id, { ...m, pos: R.i, rangeWords: R.words.length }); }
   LIB.id = null;
-  R.title = title || "Untitled text"; R.text = text; R.words = parse(text); R.i = 0; R.maxI = 0; R.activeMs = 0; R.session = null; R.sample = !!sample;
+  R.title = title || "Untitled text"; R.text = text; R.words = []; R.paraStarts = new Set();
+  paragraphs(text).forEach(p => { R.paraStarts.add(R.words.length); R.words.push(...p.split(" ")); });
+  R.i = 0; R.maxI = 0; R.activeMs = 0; R.session = null; R.sample = !!sample;
   $("docTitle").textContent = R.title;
   $("docInfo").textContent = (sample ? "Sample passage · " : "") + R.words.length.toLocaleString() + " words";
   $("recallText").value = ""; $("recallResult").hidden = true;
@@ -464,7 +474,10 @@ function slideBuild(k) {
   const n = R.words.length, from = Math.max(0, k - 20), to = Math.min(n, k + 100), track = $("track");
   SL.spans = []; SL.start = from; SL.cur = -1;
   const frag = document.createDocumentFragment();
-  for (let i = from; i < to; i++) { const s = el("span", "", R.words[i]); SL.spans.push(s); frag.append(s); }
+  for (let i = from; i < to; i++) {
+    if (i > 0 && R.paraStarts.has(i)) frag.append(el("i", "para-gap", "¶"));
+    const s = el("span", "", R.words[i]); SL.spans.push(s); frag.append(s);
+  }
   track.replaceChildren(frag);
   SL.centers = SL.spans.map(s => s.offsetLeft + s.offsetWidth * 0.4);
 }
@@ -480,9 +493,9 @@ function slidePlace() {
 function slideFrame(t) {
   if (!R.playing) return;
   const dt = Math.min(100, t - SL.last); SL.last = t;
-  const w = R.words[Math.floor(SL.pos)] || "";
+  const wi = Math.floor(SL.pos), w = R.words[wi] || "";
   let f = w.length > 8 ? 1.25 : 1;
-  if (S().punct) { if (/[.!?]["'”’)]*$/.test(w)) f *= 2.1; else if (/[,;:—–]["'”’)]*$/.test(w)) f *= 1.5; }
+  if (S().punct) { if (R.paraStarts.has(wi + 1)) f *= 3; else if (/[.!?]["'”’)]*$/.test(w)) f *= 2.1; else if (/[,;:—–]["'”’)]*$/.test(w)) f *= 1.5; }
   SL.pos += dt * S().wpm / 60000 / f;
   if (SL.pos >= R.words.length) { R.i = R.maxI = R.words.length; readerMeta(); return finish(); }
   const ni = Math.floor(SL.pos);
@@ -500,12 +513,12 @@ function showWord(w, idle) {
   const p = m + orp(core.length || 1);
   $("wl").textContent = w.slice(0, p); $("wp").textContent = w.charAt(p) || ""; $("wr").textContent = w.slice(p + 1);
 }
-function delayFor(chunk) {
+function delayFor(chunk, endIndex) {
   const s = S(); let ms = 60000 / s.wpm * chunk.length;
   const last = chunk[chunk.length - 1] || "";
   const longest = Math.max(...chunk.map(w => w.length));
   if (longest > 8) ms *= 1.25;
-  if (s.punct) { if (/[.!?]["'”’)]*$/.test(last)) ms *= 2.1; else if (/[,;:—–]["'”’)]*$/.test(last)) ms *= 1.5; }
+  if (s.punct) { if (R.paraStarts.has(endIndex)) ms *= 3; else if (/[.!?]["'”’)]*$/.test(last)) ms *= 2.1; else if (/[,;:—–]["'”’)]*$/.test(last)) ms *= 1.5; }
   return ms;
 }
 function step() {
@@ -514,7 +527,7 @@ function step() {
   const n = S().chunk, chunk = R.words.slice(R.i, R.i + n);
   showWord(chunk.join(" ")); R.i += chunk.length; R.maxI = Math.max(R.maxI, R.i);
   readerMeta();
-  R.t = setTimeout(step, delayFor(chunk));
+  R.t = setTimeout(step, delayFor(chunk, R.i));
 }
 let wake = null;
 function play() {
@@ -582,13 +595,20 @@ function readerMeta() {
 function buildContext() {
   const box = $("context"); box.replaceChildren();
   const frag = document.createDocumentFragment();
-  const c = Math.max(0, R.i - 1), from = Math.max(0, c - 300), to = Math.min(R.words.length, c + 700);
-  if (from > 0) frag.append("… ");
+  const c = Math.max(0, R.i - 1);
+  // Show whole paragraphs around the current word (about 1,000 words), keeping the original breaks.
+  let from = Math.max(0, c - 300), to = Math.min(R.words.length, c + 700);
+  while (from > 0 && !R.paraStarts.has(from)) from--;
+  while (to < R.words.length && !R.paraStarts.has(to)) to++;
+  let para = el("p");
+  if (from > 0) para.append("… ");
   for (let i = from; i < to; i++) {
+    if (i > from && R.paraStarts.has(i)) { frag.append(para); para = el("p"); }
     const s = el("span", i < R.i - 1 ? "read" : i === c && R.i > 0 ? "cur" : "", R.words[i]);
-    s.dataset.i = i; frag.append(s, " ");
+    s.dataset.i = i; para.append(s, " ");
   }
-  if (to < R.words.length) frag.append("…");
+  if (to < R.words.length) para.append("…");
+  frag.append(para);
   box.append(frag);
   const cur = box.querySelector(".cur"); if (cur) cur.scrollIntoView({ block: "nearest" });
 }
@@ -667,7 +687,44 @@ function getPdfjs() {
     return window.pdfjsLib;
   })().catch(e => { pdfLib = null; throw e; });
 }
-function cleanPdfText(s) { return s.replace(/(\p{L})-\n(\p{Ll})/gu, "$1$2").replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim(); }
+// Keep paragraph breaks ("\n\n"); inside a paragraph, join wrapped lines and re-join hyphenated words.
+function cleanPdfText(s) {
+  return s.split(/\n{2,}/).map(p => p.replace(/(\p{L})-\n(\p{Ll})/gu, "$1$2").replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ").trim()).filter(Boolean).join("\n\n");
+}
+// Rebuild the lines of a PDF page and mark a new paragraph where the gap to the next line is clearly
+// bigger than normal line spacing, or where a line ends a sentence well short of the right margin.
+function pdfPageText(items) {
+  const lines = []; let cur = null;
+  for (const it of items) {
+    if (typeof it.str !== "string") continue;
+    const x = it.transform[4], y = it.transform[5], size = Math.abs(it.transform[3]) || Math.abs(it.transform[0]) || 10;
+    if (!cur || Math.abs(y - cur.y) > size * 0.4) { cur = { y, x, size, text: "", right: x }; lines.push(cur); }
+    else if (cur.text && !/\s$/.test(cur.text) && !/^\s/.test(it.str) && x - cur.right > size * 0.15) cur.text += " ";
+    cur.text += it.str; cur.right = Math.max(cur.right, x + (it.width || 0));
+  }
+  const kept = lines.filter(l => l.text.trim());
+  if (!kept.length) return "";
+  const gaps = kept.slice(1).map((l, i) => kept[i].y - l.y).filter(g => g > 0).sort((a, b) => a - b);
+  // normal line spacing = the lower quartile of gaps (paragraph gaps are the larger ones)
+  // (with too few lines to compare, fall back to typical spacing for the font size)
+  const typical = kept[0].size * 1.45;
+  const lineGap = gaps.length >= 3 ? gaps[Math.floor((gaps.length - 1) / 4)] : Math.min(gaps[0] || typical, typical);
+  const maxRight = Math.max(...kept.map(l => l.right)), minLeft = Math.min(...kept.map(l => l.x));
+  let out = kept[0].text.trim();
+  for (let i = 1; i < kept.length; i++) {
+    const prev = kept[i - 1], line = kept[i], gap = prev.y - line.y;
+    const endsSentence = /[.!?:"”’)\]]$/.test(prev.text.trim());
+    const shortLine = prev.right < maxRight - (maxRight - minLeft) * 0.15;
+    const indented = line.x > minLeft + line.size * 0.8 && line.x - minLeft < (maxRight - minLeft) * 0.3;
+    const newPara = gap > lineGap * 1.35 || (endsSentence && (shortLine || indented));
+    out += (newPara ? "\n\n" : "\n") + line.text.trim();
+  }
+  return out;
+}
+// Join pages: a page that ends mid-sentence continues on the next page; otherwise start a new paragraph.
+function joinPages(pages) {
+  return pages.reduce((acc, p) => !acc ? p : !p ? acc : acc + (/[.!?:"”’)\]]$/.test(acc) ? "\n\n" : " ") + p, "");
+}
 async function readPdf(file) {
   const lib = await getPdfjs();
   const doc = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
@@ -675,23 +732,14 @@ async function readPdf(file) {
   for (let p = 1; p <= doc.numPages; p++) {
     fileStatus("Reading page " + p + " of " + doc.numPages, "busy");
     const tc = await (await doc.getPage(p)).getTextContent();
-    let s = "", prev = null;
-    for (const it of tc.items) {
-      if (typeof it.str !== "string") continue;
-      if (prev && !prev.hasEOL && s && !/\s$/.test(s) && !/^\s/.test(it.str)) {
-        const sameLine = Math.abs(it.transform[5] - prev.transform[5]) < 2;
-        const gap = it.transform[4] - (prev.transform[4] + prev.width);
-        if (!sameLine || gap > Math.abs(it.transform[0] || 10) * 0.15) s += " ";
-      }
-      s += it.str; if (it.hasEOL) s += "\n"; prev = it;
-    }
+    const s = pdfPageText(tc.items);
     pages.push(cleanPdfText(s));
   }
   return pages;
 }
 const PDF = { name: "", pages: [] };
 function loadPdfPages(from, to) {
-  const text = PDF.pages.slice(from - 1, to).join(" ");
+  const text = joinPages(PDF.pages.slice(from - 1, to));
   const title = PDF.name + (PDF.pages.length > 1 ? (from === to ? " · p. " + from : " · pp. " + from + "–" + to) : "");
   loadText(title, text, false);
 }
