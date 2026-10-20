@@ -61,7 +61,7 @@ em { font-style: italic }
 .btn.sm { padding: 4px 10px; font-size: .8rem }
 
 /* Chapters */
-nav.tabs { display: flex; gap: 2px 22px; overflow-x: auto; padding-block: 18px 0; border-bottom: 1px solid var(--line); margin-bottom: 26px }
+nav.tabs { display: flex; gap: 2px 22px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding-block: 18px 0; border-bottom: 1px solid var(--line); margin-bottom: 26px }
 nav.tabs button { border: 0; background: none; padding: 6px 0 9px; cursor: pointer; color: var(--muted); font-family: var(--display); font-size: 1.02rem; white-space: nowrap; border-bottom: 2px solid transparent; margin-bottom: -1px }
 nav.tabs button b { font-weight: 400; font-variant-caps: small-caps; color: var(--brand); margin-right: 5px; font-size: .92rem }
 nav.tabs button:hover { color: var(--ink) }
@@ -229,3 +229,4 @@ dialog::backdrop { background: rgb(20 20 18 / .45) }
 .verdict s { color: var(--muted) } .verdict b { font-weight: 600 }
 .notes.compare { max-width: 46ch; margin: 0 auto; border-top: 1px solid var(--line); padding-top: 12px }
 .hint.center { text-align: center; margin: 0 0 8px }
+nav.tabs::-webkit-scrollbar { display: none }
