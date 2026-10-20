@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "dark" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -1036,7 +1036,7 @@ document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => swit
 const SET_FIELDS = { sFocus: "focus", sShort: "short", sLong: "long", sEvery: "every" };
 const SET_CHECKS = { sAutoBreak: "autoBreak", sLock: "lock", sRecallPrompt: "recallPrompt", sSound: "sound" };
 const applySize = () => document.documentElement.dataset.size = S().size;
-// Theme: dark by default; "auto" follows the device and switches when the device does.
+// Theme: light by default; "auto" follows the device and switches when the device does.
 const darkQuery = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
 function applyTheme() {
   let t = S().theme;

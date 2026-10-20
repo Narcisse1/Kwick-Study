@@ -5,12 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kwick-Study</title>
 <meta name="description" content="Speed reading with Pomodoro focus rounds, recall checks, spaced-repetition flashcards and What/How/When/Why takeaways.">
-<meta name="theme-color" content="#12161f" id="themeColor">
+<meta name="theme-color" content="#f6f7f9" id="themeColor">
 <script>
-  // Apply the saved theme before the page paints (dark unless the person chose otherwise).
+  // Apply the saved theme before the page paints (light unless the person chose otherwise).
   (function () {
-    var t = "dark";
-    try { t = (JSON.parse(localStorage.getItem("kwick-study-v1") || "{}").settings || {}).theme || "dark"; } catch (e) {}
+    var t = "light";
+    try { t = (JSON.parse(localStorage.getItem("kwick-study-v1") || "{}").settings || {}).theme || "light"; } catch (e) {}
     if (t === "auto") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
     document.documentElement.dataset.theme = t;
   })();
@@ -35,7 +35,7 @@
       <span class="dots" id="dots" title="Focus round in the current set"></span>
       <button class="btn primary sm" id="pomoToggle">Start</button>
       <button class="btn sm" id="pomoSkip" title="Skip to the next phase">Skip</button>
-      <button class="btn ghost sm" id="themeToggle" aria-label="Switch to light mode">Light mode</button>
+      <button class="btn ghost sm" id="themeToggle" aria-label="Switch to dark mode">Dark mode</button>
       <button class="btn ghost sm" id="openSettings" aria-label="Timer settings">Settings</button>
       <button class="btn sm" id="openAccount">Sign in</button>
     </div>
@@ -281,7 +281,7 @@
       <label for="sLock">Pause the reader during breaks</label><input type="checkbox" id="sLock">
       <label for="sRecallPrompt">Ask for recall when focus ends</label><input type="checkbox" id="sRecallPrompt">
       <label for="sSound">Chime at the end of each phase</label><input type="checkbox" id="sSound">
-      <label for="sTheme">Appearance</label><select id="sTheme"><option value="dark">Dark</option><option value="light">Light</option><option value="auto">Match my device</option></select>
+      <label for="sTheme">Appearance</label><select id="sTheme"><option value="light">Light</option><option value="dark">Dark</option><option value="auto">Match my device</option></select>
       <label for="sSize">Text size</label><select id="sSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select>
     </div>
     <div class="label" style="margin-top:6px">Your data</div>
