@@ -446,7 +446,16 @@ function parse(text) { return text.replace(/\s+/g, " ").trim().split(" ").filter
 function paragraphs(text) {
   const t = text.replace(/\r\n?/g, "\n").trim();
   if (!t) return [];
-  const blocks = /\n[ \t]*\n/.test(t) ? t.split(/\n[ \t]*\n+/) : t.split(/(?<=[.!?:"”’)\]][ \t]*)\n/);
+  let blocks;
+  if (/\n[ \t]*\n/.test(t)) blocks = t.split(/\n[ \t]*\n+/);
+  else {
+    blocks = []; let cur = "";
+    for (const line of t.split("\n")) {
+      cur = cur ? cur + "\n" + line : line;
+      if (/[.!?:"”’)\]][ \t]*$/.test(line)) { blocks.push(cur); cur = ""; }
+    }
+    if (cur) blocks.push(cur);
+  }
   return blocks.map(b => b.replace(/(\p{L})-\n(\p{Ll})/gu, "$1$2").replace(/\s+/g, " ").trim()).filter(Boolean);
 }
 function loadText(title, text, sample) {
@@ -789,8 +798,13 @@ const LIB = { id: null, uploading: new Set(), posTimer: null };
 const libPath = id => Sync.user.id + "/" + id + ".json";
 async function libAdd(title, kind, pages) {
   const id = uid(), words = parse(pages.join(" ")).length;
+  // Uploading a file with the same name again replaces the earlier copy, keeping the page range
+  // and roughly where you were.
+  const old = Object.entries(state.library).find(([, m]) => m.title === title && m.kind === kind);
+  const keep = old && old[1].pages === pages.length ? { from: old[1].from, to: old[1].to, posFrac: old[1].rangeWords ? (old[1].pos || 0) / old[1].rangeWords : 0 } : {};
   try { await idbPut({ id, title, kind, pages }); } catch {}
-  save("lib_" + id, { title, kind, pages: pages.length, words, created: Date.now(), opened: Date.now(), from: 1, to: pages.length, pos: 0, rangeWords: words, cloud: false });
+  save("lib_" + id, { title, kind, pages: pages.length, words, created: Date.now(), opened: Date.now(), from: 1, to: pages.length, pos: 0, rangeWords: words, cloud: false, fmt: 2, ...keep });
+  if (old) libDelete(old[0]);
   libUpload(id);
   return id;
 }
@@ -830,11 +844,13 @@ async function libOpen(id, range) {
   const from = range ? range[0] : Math.min(m.from || 1, n), to = range ? range[1] : Math.min(Math.max(m.to || n, from), n);
   loadPdfPages(from, to);
   LIB.id = id;
-  const pos = range || (m.pos || 0) >= R.words.length - 1 ? 0 : (m.pos || 0);
+  const want = m.posFrac != null && !range ? Math.round(m.posFrac * R.words.length) : (m.pos || 0);
+  const pos = range || want >= R.words.length - 1 ? 0 : want;
   if (pos) { R.i = R.cur = pos; renderIdle(); buildContext(); readerMeta(); }
   $("pageRange").hidden = n <= 1;
   if (n > 1) { $("pFrom").value = from; $("pTo").value = to; $("pFrom").max = $("pTo").max = n; $("pOf").textContent = "of " + n; }
-  save("lib_" + id, { ...m, from, to, pos, rangeWords: R.words.length, opened: Date.now() });
+  const { posFrac, ...rest } = m;
+  save("lib_" + id, { ...rest, from, to, pos, rangeWords: R.words.length, opened: Date.now() });
   renderLibrary();
 }
 // Remember where you are in a library text (after pausing or jumping), so any device resumes there.
@@ -866,6 +882,7 @@ function renderLibrary() {
     if (pct) bits.push(pct + "% read");
     const status = LIB.id === id ? "Reading now" : LIB.uploading.has(id) ? "Uploading…" : !Sync.user ? "" : m.cloud ? "Synced" : "Waiting to upload";
     info.append(t, el("span", "hint", bits.filter(Boolean).join(" · ") + (status ? " · " + status : "")));
+    if (!m.fmt) info.append(el("span", "hint old-copy", "Saved before paragraph support. Upload the file again to get paragraphs."));
     const del = el("button", "btn ghost sm", "Delete");
     del.onclick = () => { if (del.dataset.armed) libDelete(id); else { del.dataset.armed = 1; del.textContent = "Confirm delete"; } };
     row.append(info, del); list.append(row);

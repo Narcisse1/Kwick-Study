@@ -287,3 +287,5 @@ nav.tabs::-webkit-scrollbar { display: none }
 .context p { margin: 0 0 .85em }
 .context p:last-child { margin-bottom: 0 }
 .track .para-gap { font-style: normal; color: var(--line); padding-inline: .9em; font-size: .8em; vertical-align: middle }
+
+.lib .old-copy { color: var(--warn); font-style: italic }
