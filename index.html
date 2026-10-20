@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kwick-Study</title>
+<meta name="description" content="Speed reading with Pomodoro focus rounds, recall checks, spaced-repetition flashcards and What/How/When/Why takeaways.">
+<meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151514" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kwick-Study">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,500;0,8..60,600;1,8..60,400&family=Source+Sans+3:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <div class="brand">Kwick<span>·</span>Study</div>
+    <div class="pomo" aria-label="Pomodoro timer">
+      <span class="phase" id="phase">Focus</span>
+      <span class="clock" id="clock" role="timer">25:00</span>
+      <span class="dots" id="dots" title="Focus round in the current set"></span>
+      <button class="btn primary sm" id="pomoToggle">Start</button>
+      <button class="btn sm" id="pomoSkip" title="Skip to the next phase">Skip</button>
+      <button class="btn ghost sm" id="openSettings" aria-label="Timer settings">Settings</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="t-read" aria-selected="true" data-tab="read"><b>i.</b>Read</button>
+    <button role="tab" id="t-recall" aria-selected="false" data-tab="recall"><b>ii.</b>Recall</button>
+    <button role="tab" id="t-apply" aria-selected="false" data-tab="apply"><b>iii.</b>Apply</button>
+    <button role="tab" id="t-review" aria-selected="false" data-tab="review"><b>iv.</b>Review<span class="count" id="dueCount" hidden>0</span></button>
+    <button role="tab" id="t-progress" aria-selected="false" data-tab="progress"><b>v.</b>Progress</button>
+  </nav>
+
+  <main>
+    <!-- READ -->
+    <section class="tab" id="tab-read">
+      <div class="stage">
+        <div class="stage-head">
+          <h2 id="docTitle">Why recall beats rereading</h2>
+          <span class="hint" id="docInfo">Sample passage</span>
+        </div>
+        <div class="prime"><b>Read with these in mind:</b> What will I learn? · How can I use it? · When will I use it? · Why must I use it?</div>
+        <div class="window" id="window">
+          <div class="rsvp" id="rsvp"><span class="l"><bdi id="wl"></bdi></span><span class="p" id="wp">R</span><span class="r" id="wr">eady</span></div>
+          <div class="chunk" id="chunk" hidden></div>
+          <div class="slide" id="slide" hidden><div class="track" id="track"></div></div>
+          <div class="overlay" id="overlay" hidden></div>
+        </div>
+        <div class="progress"><div id="bar"></div></div>
+        <div class="meta"><span id="pos">0 / 0 words</span><span id="left">0:00 left</span></div>
+        <div class="controls">
+          <div class="transport">
+            <button class="btn round" id="back" aria-label="Back one sentence" title="Back one sentence (←)"><svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 5v14L9 12z"/></svg></button>
+            <button class="play" id="play" aria-label="Play"><svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4v16l13-8z"/></svg></button>
+            <button class="btn round" id="fwd" aria-label="Forward one sentence" title="Forward one sentence (→)"><svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 5v14l11-7z"/></svg></button>
+          </div>
+          <div class="speed">
+            <div class="row" style="justify-content:space-between"><label class="label" for="wpm">Speed</label><output id="wpmOut">300 wpm</output></div>
+            <input type="range" id="wpm" min="150" max="1000" step="25" value="300">
+          </div>
+          <div class="opts">
+            <label for="mode">Mode <select id="mode"><option value="slide">Slide</option><option value="flash">Flash</option></select></label>
+            <label for="chunkSize">Words <select id="chunkSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
+            <label><input type="checkbox" id="punct" checked> Pause at punctuation</label>
+          </div>
+        </div>
+        <p class="hint" style="margin:0"><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> sentence · <kbd>↑</kbd> <kbd>↓</kbd> speed. Pausing shows the passage; click a word to jump there.</p>
+      </div>
+
+      <div class="panel" id="contextPanel" hidden>
+        <div class="label" style="margin-bottom:8px">Passage</div>
+        <div class="context" id="context"></div>
+      </div>
+
+      <div class="panel stack">
+        <div class="upload" id="drop">
+          <strong>Read your own PDF or text file</strong>
+          <span class="hint">Drop a file here, or choose one. PDF, .txt and .md work. Scanned PDFs without selectable text can't be read.</span>
+          <label class="btn primary" for="file">Upload file</label>
+          <input type="file" id="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" hidden>
+          <span class="hint" id="fileStatus" aria-live="polite"></span>
+        </div>
+        <div class="row" id="pageRange" hidden>
+          <label for="pFrom">Pages</label><input type="number" id="pFrom" min="1">
+          <label for="pTo">to</label><input type="number" id="pTo" min="1">
+          <span class="hint" id="pOf"></span>
+          <button class="btn" id="loadPages">Read these pages</button>
+        </div>
+        <details id="loadBox">
+          <summary>Or paste text</summary>
+          <div class="stack">
+            <input type="text" id="inTitle" placeholder="Title, e.g. Chapter 3: Photosynthesis">
+            <textarea id="inText" rows="8" placeholder="Paste an article, chapter or notes here."></textarea>
+            <div class="row">
+              <button class="btn primary" id="loadText">Load text</button>
+              <span class="hint">Aim for a passage you can finish in one 25-minute round.</span>
+            </div>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- RECALL -->
+    <section class="tab" id="tab-recall" hidden>
+      <div class="panel stack">
+        <div class="label" id="recallFor">Recall</div>
+        <h2>Without looking back, write down everything you remember.</h2>
+        <p class="hint" style="margin:0">Main ideas, names, numbers, examples. Bullet points are fine. Pulling it out of your head is what makes it stick.</p>
+        <textarea id="recallText" rows="7" placeholder="What was it about? What were the key points?"></textarea>
+        <div class="row"><button class="btn primary" id="checkRecall">Check my recall</button><span class="hint" id="recallNote"></span></div>
+      </div>
+
+      <div class="panel stack" id="recallResult" hidden>
+        <div class="score">
+          <div><div class="label">Key ideas recalled</div><div class="big" id="recallPct">0%</div></div>
+          <p class="hint" style="margin:0;max-width:44ch" id="recallVerdict"></p>
+        </div>
+        <div class="chips" id="chips"></div>
+        <details><summary>Compare with the original</summary><div class="context" id="original" style="max-height:220px"></div></details>
+        <div class="row"><button class="btn primary" id="toApply">Next: plan how you'll use it</button></div>
+      </div>
+
+      <div class="panel stack" id="cardMaker">
+        <h3>Turn key ideas into flashcards</h3>
+        <p class="hint" style="margin:0">Cards come back for review just before you would forget them.</p>
+        <div class="sugg" id="sugg"></div>
+        <div class="two">
+          <textarea id="cFront" rows="2" placeholder="Question"></textarea>
+          <textarea id="cBack" rows="2" placeholder="Answer"></textarea>
+        </div>
+        <div class="row"><button class="btn" id="addCard">Add card</button></div>
+      </div>
+    </section>
+
+    <!-- APPLY -->
+    <section class="tab" id="tab-apply" hidden>
+      <div class="panel stack">
+        <div class="label" id="applyFor">Apply</div>
+        <h2>Turn what you read into something you'll do.</h2>
+        <p class="hint" style="margin:0">Answer in your own words. You'll get checkups after 1 day, 3 days, a week, 2 weeks, a month, 2 months and 4 months. Each one asks what you remember and whether you've used it.</p>
+        <div class="qs">
+          <div class="q"><label for="aWhat"><i>WHAT</i>What did I learn?</label><span class="hint">The one to three ideas that matter most.</span><textarea id="aWhat" rows="3"></textarea></div>
+          <div class="q"><label for="aHow"><i>HOW</i>How can I use this?</label><span class="hint">A concrete action. Start with "I will…"</span><textarea id="aHow" rows="3"></textarea></div>
+          <div class="q"><label for="aWhen"><i>WHEN</i>When will I use this?</label><span class="hint">A real situation or date. "Next time I…", "On Monday…"</span><textarea id="aWhen" rows="3"></textarea></div>
+          <div class="q"><label for="aWhy"><i>WHY</i>Why must I use this?</label><span class="hint">What it gets you, or what it costs you if you don't.</span><textarea id="aWhy" rows="3"></textarea></div>
+        </div>
+        <div class="row"><button class="btn primary" id="saveTake">Save and schedule checkups</button><span class="hint" id="applyNote"></span></div>
+      </div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px"><div class="label">Your takeaways</div><span class="hint" id="takeCount"></span></div>
+        <div id="takeList"></div>
+      </div>
+    </section>
+
+    <!-- REVIEW -->
+    <section class="tab" id="tab-review" hidden>
+      <div class="panel stack" id="checkPanel" hidden>
+        <div class="row" style="justify-content:space-between"><div class="label" id="checkHead">Checkup</div><span class="hint" id="checkSub"></span></div>
+        <div id="checkBody" class="stack"></div>
+      </div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between">
+          <div class="label" id="reviewHead">Review</div>
+          <span class="hint" id="reviewSub"></span>
+        </div>
+        <div class="card" id="card"></div>
+        <div id="gradeArea"></div>
+      </div>
+      <div class="panel">
+        <details><summary id="allCardsSum">All cards</summary><div class="list" id="allCards"></div></details>
+      </div>
+    </section>
+
+    <!-- PROGRESS -->
+    <section class="tab" id="tab-progress" hidden>
+      <div class="tiles">
+        <div class="tile"><div class="label">Pomodoros today</div><div class="v" id="sPomo">0</div></div>
+        <div class="tile"><div class="label">Words this week</div><div class="v" id="sWords">0</div></div>
+        <div class="tile"><div class="label">Average speed</div><div class="v" id="sWpm">–</div></div>
+        <div class="tile"><div class="label">Average recall</div><div class="v" id="sRecall">–</div></div>
+        <div class="tile"><div class="label">Takeaways saved</div><div class="v" id="sTakes">0</div></div>
+        <div class="tile"><div class="label">Times applied</div><div class="v" id="sApplied">0</div></div>
+      </div>
+      <div class="panel stack">
+        <div>
+          <h3>Speed vs. understanding</h3>
+          <p class="hint" style="margin:4px 0 0">Bars show reading speed for your last 12 sessions. The solid part is <em>effective speed</em>: speed × recall. Raise speed only while the solid part keeps growing.</p>
+        </div>
+        <div class="chart" id="chart"></div>
+      </div>
+      <div class="panel">
+        <div class="label" style="margin-bottom:8px">Sessions</div>
+        <div class="tablewrap"><table><thead><tr><th>When</th><th>Text</th><th class="n">Words</th><th class="n">WPM</th><th class="n">Recall</th></tr></thead><tbody id="sessRows"></tbody></table></div>
+      </div>
+      <p class="sync">Your data is stored in this browser on this device. Use Settings → Export backup to keep a copy or move it to another device.</p>
+    </section>
+  </main>
+</div>
+
+<dialog id="settings">
+  <form method="dialog" class="stack" id="settingsForm">
+    <h3>Timer settings</h3>
+    <div class="setgrid">
+      <label for="sFocus">Focus (minutes)</label><input type="number" id="sFocus" min="5" max="90">
+      <label for="sShort">Short break</label><input type="number" id="sShort" min="1" max="30">
+      <label for="sLong">Long break</label><input type="number" id="sLong" min="5" max="60">
+      <label for="sEvery">Long break after</label><input type="number" id="sEvery" min="2" max="8">
+      <label for="sAutoBreak">Start breaks automatically</label><input type="checkbox" id="sAutoBreak">
+      <label for="sLock">Pause the reader during breaks</label><input type="checkbox" id="sLock">
+      <label for="sRecallPrompt">Ask for recall when focus ends</label><input type="checkbox" id="sRecallPrompt">
+      <label for="sSound">Chime at the end of each phase</label><input type="checkbox" id="sSound">
+      <label for="sSize">Text size</label><select id="sSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select>
+    </div>
+    <div class="label" style="margin-top:6px">Your data</div>
+    <div class="row">
+      <button type="button" class="btn sm" id="exportData">Export backup</button>
+      <label class="btn sm" for="importData">Import backup</label>
+      <input type="file" id="importData" accept="application/json,.json" hidden>
+    </div>
+    <div class="row" style="justify-content:flex-end"><button class="btn primary" value="ok">Done</button></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
