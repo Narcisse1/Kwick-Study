@@ -113,8 +113,8 @@ input[type=checkbox] { accent-color: var(--ink); width: 15px; height: 15px }
 .context span.read { color: var(--muted) }
 .context span.cur { background: var(--focus-soft); color: var(--focus); box-shadow: 0 0 0 2px var(--focus-soft) }
 
-textarea, input[type=text], input[type=number] { font-family: var(--read); font-size: 1rem; width: 100%; border: 1px solid var(--line); border-bottom-color: var(--muted); background: var(--surface); border-radius: 0; padding: 10px 12px; min-width: 0 }
-textarea:focus, input[type=text]:focus, input[type=number]:focus { border-color: var(--ink); outline: none }
+textarea, input[type=text], input[type=number], input[type=email], input[type=password] { font-family: var(--read); font-size: 1rem; width: 100%; border: 1px solid var(--line); border-bottom-color: var(--muted); background: var(--surface); border-radius: 0; padding: 10px 12px; min-width: 0 }
+textarea:focus, input[type=text]:focus, input[type=number]:focus, input[type=email]:focus, input[type=password]:focus { border-color: var(--ink); outline: none }
 textarea { resize: vertical; line-height: 1.55 }
 input[type=number] { width: 5em; padding: 4px 8px; font-variant-numeric: lining-nums }
 ::placeholder { color: var(--muted); font-style: italic; opacity: .8 }
@@ -202,3 +202,10 @@ dialog::backdrop { background: rgb(20 20 18 / .45) }
 /* Text size setting */
 :root[data-size="small"] body { font-size: 15px }
 :root[data-size="large"] body { font-size: 18px }
+
+/* Account */
+.acct { max-width: 460px }
+.field { display: grid; gap: 4px }
+.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer }
+.check input { margin-top: 5px; flex: none }
+#tab-account > .panel { border-top: 0; padding-top: 0 }

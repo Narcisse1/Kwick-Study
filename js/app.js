@@ -9,7 +9,7 @@ Timing matters as much as effort. If you review an idea minutes after learning i
 
 Speed reading fits into this picture only when comprehension keeps up. Reading faster lets you cover more material in a focused session, but the words still need to land somewhere. A good habit is to read in short focused blocks, stop, write down what you remember, and turn the key ideas into questions. Then let the schedule bring those questions back. Short breaks between blocks give your attention time to recover, which is why the Pomodoro technique pairs well with reading: twenty-five minutes of focus, five minutes of rest, and a longer break after four rounds.`;
 
-/* ---------- storage: everything lives in this browser's localStorage ---------- */
+/* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {} };
 const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium" };
@@ -29,20 +29,134 @@ function allDocs() {
   for (const [k, v] of Object.entries(state.takes)) out["take_" + k] = v;
   return out;
 }
+const MAPS = { card: "cards", sess: "sessions", day: "days", take: "takes" };
+function getDoc(key) {
+  if (key === "settings") return state.settings;
+  const i = key.indexOf("_"), m = state[MAPS[key.slice(0, i)]];
+  return m ? m[key.slice(i + 1)] : undefined;
+}
+function dropDoc(key) {
+  if (key === "settings") { state.settings = {}; return; }
+  const i = key.indexOf("_"), m = state[MAPS[key.slice(0, i)]];
+  if (m) delete m[key.slice(i + 1)];
+}
 function mirror() { try { localStorage.setItem(LS, JSON.stringify(allDocs())); } catch {} }
+// meta[key] = when this device last changed the doc; used to settle conflicts when syncing.
+const META = LS + "-meta", OWNER = LS + "-owner", SINCE = LS + "-since";
+let meta = {};
+try { meta = JSON.parse(localStorage.getItem(META) || "{}") || {}; } catch {}
+function saveMeta() { try { localStorage.setItem(META, JSON.stringify(meta)); } catch {} }
+function touch(key) { meta[key] = Date.now(); saveMeta(); Sync.queue(key); }
 function save(key, val) {
-  ingest(key, val); mirror();
+  ingest(key, val); mirror(); touch(key);
 }
 function remove(key) {
-  if (key.startsWith("card_")) delete state.cards[key.slice(5)];
-  if (key.startsWith("take_")) delete state.takes[key.slice(5)];
-  mirror();
+  dropDoc(key); mirror(); touch(key);
 }
 const timers = {};
 function saveLater(key, getVal, ms = 700) { clearTimeout(timers[key]); timers[key] = setTimeout(() => save(key, getVal()), ms); }
 
 try { const raw = JSON.parse(localStorage.getItem(LS) || "null"); if (raw) for (const [k, v] of Object.entries(raw)) ingest(k, v); } catch {}
 const S = () => ({ ...DEFAULTS, ...state.settings });
+
+/* ---------- sync with the signed-in account (Supabase table user_docs) ---------- */
+const Sync = { sb: null, user: null, pending: new Set(), timer: null, busy: false, state: "idle", at: null };
+Sync.queue = key => {
+  if (!Sync.user) return;
+  Sync.pending.add(key); clearTimeout(Sync.timer); Sync.timer = setTimeout(() => Sync.flush(), 1500);
+};
+Sync.flush = async () => {
+  clearTimeout(Sync.timer); Sync.timer = null;
+  if (!Sync.user || Sync.busy || !Sync.pending.size) return;
+  Sync.busy = true;
+  const keys = [...Sync.pending]; Sync.pending.clear();
+  const rows = keys.map(k => ({ user_id: Sync.user.id, key: k, value: getDoc(k) ?? { _deleted: true }, updated_ms: meta[k] || 1 }));
+  try {
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await Sync.sb.from("user_docs").upsert(rows.slice(i, i + 500), { onConflict: "user_id,key" });
+      if (error) throw error;
+    }
+    Sync.state = "ok"; Sync.at = new Date();
+  } catch (e) {
+    keys.forEach(k => Sync.pending.add(k));
+    Sync.state = "error"; Sync.timer = setTimeout(() => Sync.flush(), 30000);
+  } finally {
+    Sync.busy = false; renderSyncState();
+    if (Sync.pending.size && !Sync.timer) Sync.timer = setTimeout(() => Sync.flush(), 1500);
+  }
+};
+async function fetchRows(since) {
+  const rows = [];
+  for (let from = 0; ; from += 1000) {
+    let q = Sync.sb.from("user_docs").select("key,value,updated_ms,synced_at").order("synced_at").order("key");
+    if (since) q = q.gt("synced_at", since);
+    const { data, error } = await q.range(from, from + 999);
+    if (error) throw error;
+    rows.push(...data);
+    if (data.length < 1000) return rows;
+  }
+}
+// Apply server rows that are newer than ours; returns keys where ours is newer.
+function applyRemote(rows) {
+  const remoteKeys = new Set(), ours = [];
+  let since = null;
+  for (const r of rows) {
+    remoteKeys.add(r.key);
+    if (!since || r.synced_at > since) since = r.synced_at;
+    const mine = meta[r.key] || 0;
+    if (r.updated_ms > mine) {
+      if (r.value && r.value._deleted) dropDoc(r.key); else ingest(r.key, r.value);
+      meta[r.key] = r.updated_ms;
+    } else if (r.updated_ms < mine) ours.push(r.key);
+  }
+  return { remoteKeys, ours, since };
+}
+function storeSince(since) { if (since) try { localStorage.setItem(SINCE + "-" + Sync.user.id, since); } catch {} }
+async function firstSync() {
+  Sync.state = "syncing"; renderSyncState();
+  try {
+    let owner = null; try { owner = localStorage.getItem(OWNER); } catch {}
+    const rows = await fetchRows(null);
+    if (owner && owner !== Sync.user.id) {
+      // This browser holds someone else's data: start from this account's data instead of mixing them.
+      state.settings = {}; state.cards = {}; state.sessions = {}; state.days = {}; state.takes = {}; meta = {};
+    }
+    const { remoteKeys, ours, since } = applyRemote(rows);
+    // Push anything only this device has, or where this device's copy is newer.
+    for (const k of new Set([...Object.keys(allDocs()), ...Object.keys(meta)])) {
+      if (k === "settings" && !Object.keys(state.settings).length && !meta.settings) continue;
+      if (!remoteKeys.has(k) || ours.includes(k)) Sync.pending.add(k);
+    }
+    mirror(); saveMeta(); storeSince(since);
+    try { localStorage.setItem(OWNER, Sync.user.id); } catch {}
+    applySettings(); renderAll();
+    Sync.state = "ok"; Sync.at = new Date();
+    await Sync.flush();
+  } catch (e) { Sync.state = "error"; }
+  renderSyncState();
+}
+async function pullChanges() {
+  if (!Sync.user || Sync.busy) return;
+  try {
+    let since = null; try { since = localStorage.getItem(SINCE + "-" + Sync.user.id); } catch {}
+    const rows = await fetchRows(since);
+    if (!rows.length) return;
+    const r = applyRemote(rows);
+    r.ours.forEach(k => Sync.pending.add(k));
+    mirror(); saveMeta(); storeSince(r.since);
+    applySettings(); renderAll();
+    Sync.state = "ok"; Sync.at = new Date(); renderSyncState();
+    if (Sync.pending.size) Sync.flush();
+  } catch { Sync.state = "error"; renderSyncState(); }
+}
+function renderSyncState() {
+  const el = document.getElementById("syncState"), note = document.getElementById("syncNote");
+  const t = !Sync.user ? "" : Sync.state === "syncing" ? "Syncing your study data…"
+    : Sync.state === "error" ? "Couldn't reach the server. Changes are saved on this device and will sync when you're back online."
+    : "Your study data is synced" + (Sync.at ? " (last at " + Sync.at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) + ")." : ".");
+  if (el) el.textContent = t;
+  if (note) note.textContent = Sync.user ? "Signed in as " + Sync.user.email + ". " + t : "Your data is stored in this browser on this device. Create a free account to keep it in sync across devices, or use Settings → Export backup to keep a copy.";
+}
 
 /* ---------- helpers ---------- */
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -674,6 +788,7 @@ function drawChart(sess) {
 
 /* ---------- Tabs, settings ---------- */
 function switchTab(name) {
+  if (name === "account") renderAccount();
   document.querySelectorAll("nav.tabs button").forEach(b => b.setAttribute("aria-selected", b.dataset.tab === name));
   document.querySelectorAll("section.tab").forEach(s => s.hidden = s.id !== "tab-" + name);
   if (name !== "read") stop(); else if (!R.playing) renderIdle();
@@ -719,7 +834,8 @@ function renderAll() { renderReview(); renderProgress(); renderRecall(); renderA
 loadText(SAMPLE_TITLE, SAMPLE, true);
 P.remain = dur("focus");
 applySettings(); renderAll();
-try { const t = localStorage.getItem(LS + "-tab"); if (t && $("tab-" + t)) switchTab(t); } catch {}
+try { const t = localStorage.getItem(LS + "-tab"); if (t && t !== "account" && $("tab-" + t)) switchTab(t); } catch {}
+if (location.hash === "#account") switchTab("account");
 setInterval(updateBadge, 30000);
 
 /* ---------- backup: export / import everything as a JSON file ---------- */
@@ -733,11 +849,161 @@ $("importData").onchange = async e => {
   try {
     const parsed = JSON.parse(await f.text());
     if (!parsed || !["kwick-study", "tempo-reader"].includes(parsed.app) || typeof parsed.data !== "object") throw new Error("format");
-    for (const [k, v] of Object.entries(parsed.data)) if (v && typeof v === "object") ingest(k, v);
+    for (const [k, v] of Object.entries(parsed.data)) if (v && typeof v === "object") { ingest(k, v); touch(k); }
     mirror(); applySettings(); renderAll();
     toast("Backup restored. Cards, takeaways and sessions were merged in.");
   } catch { toast("That file isn't a Kwick-Study backup."); }
 };
+
+/* ---------- accounts: sign up, sign in, password reset, newsletter (Supabase Auth) ---------- */
+const A = { mode: "create", profile: null, recovering: false };
+const acctPanels = ["acctOff", "acctOut", "acctReset", "acctIn"];
+function showPanel(id) { acctPanels.forEach(p => $(p).hidden = p !== id); }
+function acctMsg(id, text, bad) { const m = $(id); m.textContent = text || ""; m.style.color = bad ? "var(--focus)" : ""; }
+function setMode(mode) {
+  A.mode = mode;
+  const create = mode === "create";
+  $("modeCreate").setAttribute("aria-pressed", create); $("modeSignin").setAttribute("aria-pressed", !create);
+  $("acctTitle").textContent = create ? "Create your Kwick-Study account" : "Welcome back";
+  $("acctLead").textContent = create ? "Keep your flashcards, takeaways and progress on every device. Free." : "Sign in to sync your study data on this device.";
+  $("acctPass").autocomplete = create ? "new-password" : "current-password";
+  $("passHint").hidden = !create; $("nlRow").hidden = !create; $("forgot").hidden = create;
+  $("acctSubmit").textContent = create ? "Create account" : "Sign in";
+  $("resend").hidden = true; acctMsg("acctMsg", "");
+}
+function renderAccount() {
+  $("openAccount").textContent = Sync.user ? "Account" : "Sign in";
+  renderSyncState();
+  if (!Sync.sb) { showPanel("acctOff"); return; }
+  if (A.recovering) { showPanel("acctReset"); return; }
+  if (!Sync.user) { showPanel("acctOut"); return; }
+  showPanel("acctIn");
+  $("acctWho").textContent = Sync.user.email;
+  const p = A.profile;
+  $("acctNewsToggle").checked = !!(p && p.newsletter);
+  $("newsState").textContent = !p ? "" : p.newsletter && p.newsletter_consented_at
+    ? "Subscribed since " + new Date(p.newsletter_consented_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }) + "."
+    : "Not subscribed.";
+}
+async function loadProfile() {
+  const { data } = await Sync.sb.from("profiles").select("newsletter,newsletter_consented_at").eq("id", Sync.user.id).maybeSingle();
+  A.profile = data || null; renderAccount();
+}
+const emailOk = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+const siteUrl = () => location.origin + location.pathname;
+function friendlyAuthError(e) {
+  const m = (e && e.message || "").toLowerCase();
+  if (m.includes("already registered") || m.includes("already been registered")) return "An account with this email already exists. Sign in instead, or reset your password.";
+  if (m.includes("invalid login")) return "That email and password don't match. Check them, or reset your password.";
+  if (m.includes("email not confirmed")) return "Confirm your email first. We sent you a link when you signed up.";
+  if (m.includes("rate limit") || m.includes("too many")) return "Too many attempts. Wait a minute, then try again.";
+  if (m.includes("password")) return e.message;
+  if (m.includes("fetch") || m.includes("network")) return "Couldn't reach the server. Check your internet connection and try again.";
+  return e && e.message ? e.message : "Something went wrong. Try again.";
+}
+$("openAccount").onclick = () => switchTab("account");
+$("modeCreate").onclick = () => setMode("create");
+$("modeSignin").onclick = () => setMode("signin");
+$("acctForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const email = $("acctEmail").value.trim(), pass = $("acctPass").value;
+  if (!emailOk(email)) return acctMsg("acctMsg", "Enter a valid email address.", true);
+  if (A.mode === "create" && pass.length < 8) return acctMsg("acctMsg", "Use at least 8 characters for your password.", true);
+  if (!pass) return acctMsg("acctMsg", "Enter your password.", true);
+  const btn = $("acctSubmit"); btn.disabled = true; acctMsg("acctMsg", A.mode === "create" ? "Creating your account…" : "Signing in…");
+  try {
+    if (A.mode === "create") {
+      const { data, error } = await Sync.sb.auth.signUp({ email, password: pass, options: { emailRedirectTo: siteUrl(), data: { newsletter: $("acctNews").checked } } });
+      if (error) throw error;
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) throw new Error("already registered");
+      if (!data.session) { acctMsg("acctMsg", "Almost done. We sent a confirmation link to " + email + ". Open it to activate your account."); $("resend").hidden = false; }
+      $("acctPass").value = "";
+    } else {
+      const { error } = await Sync.sb.auth.signInWithPassword({ email, password: pass });
+      if (error) { if ((error.message || "").toLowerCase().includes("not confirmed")) $("resend").hidden = false; throw error; }
+      $("acctPass").value = ""; acctMsg("acctMsg", "");
+    }
+  } catch (err) { acctMsg("acctMsg", friendlyAuthError(err), true); }
+  finally { btn.disabled = false; }
+});
+$("resend").onclick = async () => {
+  const email = $("acctEmail").value.trim(); if (!emailOk(email)) return acctMsg("acctMsg", "Enter your email address first.", true);
+  const { error } = await Sync.sb.auth.resend({ type: "signup", email, options: { emailRedirectTo: siteUrl() } });
+  acctMsg("acctMsg", error ? friendlyAuthError(error) : "Sent a new confirmation link to " + email + ".", !!error);
+};
+$("forgot").onclick = async () => {
+  const email = $("acctEmail").value.trim();
+  if (!emailOk(email)) return acctMsg("acctMsg", "Enter your email address above, then choose Forgot password.", true);
+  const { error } = await Sync.sb.auth.resetPasswordForEmail(email, { redirectTo: siteUrl() });
+  acctMsg("acctMsg", error ? friendlyAuthError(error) : "If an account exists for " + email + ", a password reset link is on its way.", !!error);
+};
+$("resetForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const pass = $("newPass").value;
+  if (pass.length < 8) return acctMsg("resetMsg", "Use at least 8 characters.", true);
+  const { error } = await Sync.sb.auth.updateUser({ password: pass });
+  if (error) return acctMsg("resetMsg", friendlyAuthError(error), true);
+  A.recovering = false; $("newPass").value = ""; renderAccount(); toast("Password updated. You're signed in.");
+});
+$("acctNewsToggle").onchange = async e => {
+  const on = e.target.checked; e.target.disabled = true;
+  const { data, error } = await Sync.sb.from("profiles").update({ newsletter: on }).eq("id", Sync.user.id).select("newsletter,newsletter_consented_at").maybeSingle();
+  e.target.disabled = false;
+  if (error || !data) { e.target.checked = !on; acctMsg("acctInMsg", "Couldn't update your newsletter choice. Try again.", true); return; }
+  A.profile = data; renderAccount(); toast(on ? "Subscribed to the newsletter." : "Unsubscribed from the newsletter.");
+};
+$("signOut").onclick = async () => {
+  await Sync.flush();
+  const wipe = $("wipeOnOut").checked;
+  await Sync.sb.auth.signOut();
+  if (wipe) {
+    try { [LS, META, OWNER].forEach(k => localStorage.removeItem(k)); } catch {}
+    state.settings = {}; state.cards = {}; state.sessions = {}; state.days = {}; state.takes = {}; meta = {};
+    applySettings(); renderAll();
+  }
+  toast(wipe ? "Signed out and removed your data from this browser." : "Signed out.");
+};
+$("delAcct").onclick = async () => {
+  const b = $("delAcct");
+  if (!b.dataset.armed) { b.dataset.armed = 1; b.textContent = "Yes, permanently delete my account"; acctMsg("acctInMsg", "This deletes your account, newsletter subscription and synced study data. Data on this device stays unless you remove it.", true); return; }
+  b.disabled = true;
+  const { error } = await Sync.sb.rpc("delete_my_account");
+  b.disabled = false; delete b.dataset.armed; b.textContent = "Delete account";
+  if (error) return acctMsg("acctInMsg", "Couldn't delete your account. Try again.", true);
+  try { localStorage.removeItem(OWNER); } catch {}
+  await Sync.sb.auth.signOut().catch(() => {});
+  acctMsg("acctInMsg", ""); toast("Your account was deleted.");
+};
+async function onAuth(event, session) {
+  const u = session && session.user || null;
+  if (event === "PASSWORD_RECOVERY") { A.recovering = true; Sync.user = u; switchTab("account"); return; }
+  if (u && (!Sync.user || Sync.user.id !== u.id)) {
+    Sync.user = u; renderAccount();
+    if (event === "SIGNED_IN" && /access_token|type=signup/.test(location.hash)) { history.replaceState(null, "", siteUrl()); toast("Email confirmed. You're signed in."); }
+    await firstSync(); loadProfile();
+  } else if (!u && Sync.user) {
+    Sync.user = null; A.profile = null; A.recovering = false; Sync.pending.clear(); Sync.state = "idle";
+  }
+  renderAccount();
+}
+function initAccounts() {
+  const cfg = window.KWICK_CONFIG || {};
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey || !window.supabase) {
+    $("acctOffText").textContent = !cfg.supabaseUrl || !cfg.supabaseAnonKey
+      ? "Accounts aren't switched on for this copy of Kwick-Study yet. You can keep using everything; your data stays in this browser."
+      : "Couldn't load the sign-in service. Check your internet connection and reload. Everything else keeps working offline.";
+    renderAccount(); return;
+  }
+  Sync.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+  // Run the handler outside the auth callback: awaiting Supabase calls inside it can deadlock.
+  Sync.sb.auth.onAuthStateChange((event, session) => setTimeout(() => onAuth(event, session), 0));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") pullChanges(); else Sync.flush(); });
+  window.addEventListener("online", () => { Sync.flush(); pullChanges(); });
+  setInterval(pullChanges, 120000);
+  renderAccount();
+}
+setMode("create");
+initAccounts();
 })();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});

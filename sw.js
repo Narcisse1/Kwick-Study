@@ -1,7 +1,7 @@
 // Offline support: the app shell is cached on install; fonts and the PDF reader (pdf.js) are cached the first time they load.
-const VERSION = "kwick-study-v1";
+const VERSION = "kwick-study-v2";
 const SHELL = [
-  "./", "index.html", "css/styles.css", "js/app.js", "manifest.webmanifest",
+  "./", "index.html", "css/styles.css", "js/config.js", "js/app.js", "manifest.webmanifest",
   "icons/icon.svg", "icons/icon-192.png", "icons/icon-512.png",
 ];
 
@@ -19,7 +19,7 @@ self.addEventListener("fetch", e => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  const isCdn = ["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com"].includes(url.host);
+  const isCdn = ["fonts.googleapis.com", "fonts.gstatic.com", "cdnjs.cloudflare.com", "cdn.jsdelivr.net"].includes(url.host);
   if (url.origin !== location.origin && !isCdn) return;
   // Network first for the page itself so updates arrive; cache first for everything else.
   if (req.mode === "navigate") {

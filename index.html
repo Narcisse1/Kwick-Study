@@ -28,6 +28,7 @@
       <button class="btn primary sm" id="pomoToggle">Start</button>
       <button class="btn sm" id="pomoSkip" title="Skip to the next phase">Skip</button>
       <button class="btn ghost sm" id="openSettings" aria-label="Timer settings">Settings</button>
+      <button class="btn sm" id="openAccount">Sign in</button>
     </div>
   </div>
 </header>
@@ -202,7 +203,52 @@
         <div class="label" style="margin-bottom:8px">Sessions</div>
         <div class="tablewrap"><table><thead><tr><th>When</th><th>Text</th><th class="n">Words</th><th class="n">WPM</th><th class="n">Recall</th></tr></thead><tbody id="sessRows"></tbody></table></div>
       </div>
-      <p class="sync">Your data is stored in this browser on this device. Use Settings → Export backup to keep a copy or move it to another device.</p>
+      <p class="sync" id="syncNote">Your data is stored in this browser on this device.</p>
+    </section>
+
+    <!-- ACCOUNT -->
+    <section class="tab" id="tab-account" hidden>
+      <div class="panel stack acct" id="acctOff" hidden>
+        <h2>Accounts</h2>
+        <p class="hint" id="acctOffText"></p>
+      </div>
+
+      <div class="panel stack acct" id="acctOut" hidden>
+        <div class="seg"><button type="button" class="btn sm" id="modeCreate">Create account</button><button type="button" class="btn sm" id="modeSignin">Sign in</button></div>
+        <div class="stack" style="gap:4px">
+          <h2 id="acctTitle">Create your Kwick-Study account</h2>
+          <p class="hint" id="acctLead" style="margin:0"></p>
+        </div>
+        <form id="acctForm" class="stack" novalidate>
+          <div class="field"><label class="label" for="acctEmail">Email</label><input type="email" id="acctEmail" autocomplete="email" inputmode="email" required></div>
+          <div class="field"><label class="label" for="acctPass">Password</label><input type="password" id="acctPass" autocomplete="new-password" required><span class="hint" id="passHint">At least 8 characters.</span></div>
+          <label class="check" id="nlRow"><input type="checkbox" id="acctNews"><span>Send me the Kwick-Study newsletter: reading and memory techniques, plus app updates. Unsubscribe anytime.</span></label>
+          <div class="row"><button class="btn primary" id="acctSubmit" type="submit">Create account</button><button type="button" class="btn ghost" id="forgot" hidden>Forgot password?</button><button type="button" class="btn ghost" id="resend" hidden>Resend confirmation email</button></div>
+          <p class="hint" id="acctMsg" aria-live="polite" style="margin:0"></p>
+        </form>
+        <p class="hint" style="margin:0">Kwick-Study works without an account. Your email is used only to sign you in and, if you choose, to send the newsletter.</p>
+      </div>
+
+      <div class="panel stack acct" id="acctReset" hidden>
+        <h2>Set a new password</h2>
+        <form id="resetForm" class="stack" novalidate>
+          <div class="field"><label class="label" for="newPass">New password</label><input type="password" id="newPass" autocomplete="new-password" required><span class="hint">At least 8 characters.</span></div>
+          <div class="row"><button class="btn primary" type="submit">Save password</button></div>
+          <p class="hint" id="resetMsg" aria-live="polite" style="margin:0"></p>
+        </form>
+      </div>
+
+      <div class="panel stack acct" id="acctIn" hidden>
+        <div class="stack" style="gap:2px"><div class="label">Signed in as</div><h2 id="acctWho" style="overflow-wrap:anywhere"></h2></div>
+        <p class="hint" id="syncState" style="margin:0"></p>
+        <div class="stack" style="gap:4px">
+          <label class="check"><input type="checkbox" id="acctNewsToggle"><span>Receive the Kwick-Study newsletter</span></label>
+          <span class="hint" id="newsState"></span>
+        </div>
+        <label class="check"><input type="checkbox" id="wipeOnOut"><span>Remove my study data from this browser when I sign out (for shared computers)</span></label>
+        <div class="row"><button class="btn" id="signOut">Sign out</button><button class="btn ghost" id="delAcct">Delete account</button></div>
+        <p class="hint" id="acctInMsg" aria-live="polite" style="margin:0"></p>
+      </div>
     </section>
   </main>
 </div>
@@ -233,6 +279,8 @@
 
 <div class="toast" id="toast" hidden></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
