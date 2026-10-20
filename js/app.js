@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "river", ambientVol: 40, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "river", ambientVol: 50, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -283,17 +283,44 @@ function ambientPreview() {
   ambientPlay(s.ambient);
   AMB.preview = setTimeout(() => { AMB.preview = null; ambientUpdate(); }, 5000);
 }
-function renderMute() {
-  const m = S().muted;
-  $("muteToggle").textContent = m ? "Unmute" : "Mute";
-  $("muteToggle").setAttribute("aria-label", m ? "Turn sounds back on" : "Mute all sounds");
-  $("muteToggle").setAttribute("aria-pressed", m);
+// Sound menu in the header: mute, background sound, volume, notification sounds.
+function renderSoundMenu() {
+  const s = S();
+  $("soundBtnText").textContent = s.muted ? "Muted" : "Sound";
+  $("soundBtn").setAttribute("aria-label", "Sound options" + (s.muted ? " (muted)" : ""));
+  $("mMute").checked = s.muted;
+  document.querySelectorAll('input[name="mAmbient"]').forEach(r => { r.checked = r.value === s.ambient; r.disabled = s.muted; });
+  $("mVol").value = s.ambientVol; $("mVolOut").textContent = s.ambientVol + "%";
+  $("mVol").disabled = s.muted || s.ambient === "off";
+  $("mNotify").checked = s.sound; $("mNotify").disabled = s.muted;
+  $("mPreview").disabled = s.muted || s.ambient === "off";
 }
-$("muteToggle").onclick = () => {
-  save("settings", { ...state.settings, muted: !S().muted }); renderMute();
-  clearTimeout(AMB.preview); AMB.preview = null; ambientUpdate();
-  toast(S().muted ? "Sounds muted." : "Sounds on.");
+function setSound(patch, preview) {
+  save("settings", { ...state.settings, ...patch }); renderSoundMenu();
+  if (preview) ambientPreview(); else { clearTimeout(AMB.preview); AMB.preview = null; ambientUpdate(); }
+}
+function toggleSoundMenu(open) {
+  const menu = $("soundMenu"), btn = $("soundBtn");
+  open = open ?? menu.hidden;
+  menu.hidden = !open; btn.setAttribute("aria-expanded", open);
+  if (!open) return;
+  renderSoundMenu();
+  // keep the panel on screen: open towards whichever side has room
+  menu.style.left = menu.style.right = "";
+  const r = btn.getBoundingClientRect(), w = menu.offsetWidth;
+  if (r.right - w < 8) menu.style.left = "0"; else menu.style.right = "0";
+}
+$("soundBtn").onclick = () => toggleSoundMenu();
+document.addEventListener("pointerdown", e => { if (!$("soundMenu").hidden && !e.target.closest(".menu-wrap")) toggleSoundMenu(false); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("soundMenu").hidden) { toggleSoundMenu(false); $("soundBtn").focus(); } });
+$("mMute").onchange = e => { setSound({ muted: e.target.checked }); toast(e.target.checked ? "Sounds muted." : "Sounds on."); };
+document.querySelectorAll('input[name="mAmbient"]').forEach(r => r.onchange = () => setSound({ ambient: r.value }, r.value !== "off"));
+$("mVol").oninput = e => {
+  state.settings = { ...state.settings, ambientVol: +e.target.value }; $("mVolOut").textContent = e.target.value + "%";
+  saveLater("settings", () => state.settings); ambientPreview();
 };
+$("mNotify").onchange = e => { setSound({ sound: e.target.checked }); if (e.target.checked) sfx("correct"); };
+$("mPreview").onclick = () => ambientPreview();
 
 /* ---------- Pomodoro ---------- */
 const P = { phase: "focus", running: false, endAt: 0, remain: 0, round: 0, int: null };
@@ -321,7 +348,7 @@ function pomoStart() {
     if (!s.muted && s.ambient !== "off" && !s.ambientTipShown) {
       const name = { river: "River", rain: "Rain", ocean: "Ocean waves", brown: "Soft noise" }[s.ambient];
       save("settings", { ...state.settings, ambientTipShown: true });
-      toast("Background sound: " + name + ". Change it in Settings, or press Mute.");
+      toast("Background sound: " + name + ". Change it or mute it under Sound ▾ at the top.");
     }
   }
   P.int = setInterval(pomoTick, 250); pomoRender();
@@ -1177,7 +1204,7 @@ function switchTab(name) {
 document.querySelectorAll("nav.tabs button").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
 
 const SET_FIELDS = { sFocus: "focus", sShort: "short", sLong: "long", sEvery: "every" };
-const SET_CHECKS = { sAutoBreak: "autoBreak", sLock: "lock", sRecallPrompt: "recallPrompt", sSound: "sound" };
+const SET_CHECKS = { sAutoBreak: "autoBreak", sLock: "lock", sRecallPrompt: "recallPrompt" };
 const applySize = () => document.documentElement.dataset.size = S().size;
 // Theme: light by default; "auto" follows the device and switches when the device does.
 const darkQuery = window.matchMedia ? matchMedia("(prefers-color-scheme: dark)") : null;
@@ -1196,15 +1223,12 @@ $("themeToggle").onclick = () => {
 };
 if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", () => { if (S().theme === "auto") applyTheme(); });
 $("sTheme").onchange = e => { save("settings", { ...state.settings, theme: e.target.value }); applyTheme(); };
-$("sAmbient").onchange = e => { save("settings", { ...state.settings, ambient: e.target.value }); ambientPreview(); };
-$("sAmbientVol").oninput = e => { state.settings = { ...state.settings, ambientVol: +e.target.value }; saveLater("settings", () => state.settings); ambientPreview(); };
 $("sSize").onchange = e => { save("settings", { ...state.settings, size: e.target.value }); applySize(); SL.spans = []; renderIdle(); };
 $("openSettings").onclick = () => {
   const s = S();
   for (const [id, k] of Object.entries(SET_FIELDS)) $(id).value = s[k];
   for (const [id, k] of Object.entries(SET_CHECKS)) $(id).checked = s[k];
   $("sSize").value = s.size; $("sTheme").value = s.theme;
-  $("sAmbient").value = s.ambient; $("sAmbientVol").value = s.ambientVol;
   $("settings").showModal();
 };
 $("settings").addEventListener("close", () => {
@@ -1217,7 +1241,7 @@ $("settings").addEventListener("close", () => {
   pomoRender();
 });
 function applySettings() {
-  const s = S(); applySize(); applyTheme(); renderMute();
+  const s = S(); applySize(); applyTheme(); renderSoundMenu();
   renderWpm();
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
   $("mode").value = s.mode; $("chunkSize").disabled = s.mode === "slide";
