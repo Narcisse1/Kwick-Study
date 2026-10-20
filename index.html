@@ -35,8 +35,9 @@
       <span class="dots" id="dots" title="Focus round in the current set"></span>
       <button class="btn primary sm" id="pomoToggle">Start</button>
       <button class="btn sm" id="pomoSkip" title="Skip to the next phase">Skip</button>
+      <button class="btn ghost sm" id="muteToggle" aria-pressed="false">Mute</button>
       <button class="btn ghost sm" id="themeToggle" aria-label="Switch to dark mode">Dark mode</button>
-      <button class="btn ghost sm" id="openSettings" aria-label="Timer settings">Settings</button>
+      <button class="btn ghost sm" id="openSettings" aria-label="Settings">Settings</button>
       <button class="btn sm" id="openAccount">Sign in</button>
     </div>
   </div>
@@ -92,11 +93,6 @@
         <div class="context" id="context"></div>
       </div>
 
-      <div class="panel stack" id="libPanel" hidden>
-        <div class="row" style="justify-content:space-between"><h3>Your library</h3><span class="hint" id="libNote"></span></div>
-        <div class="lib" id="libList"></div>
-      </div>
-
       <div class="panel stack">
         <div class="upload" id="drop">
           <strong>Read your own PDF or text file</strong>
@@ -122,6 +118,11 @@
             </div>
           </div>
         </details>
+      </div>
+
+      <div class="panel stack" id="libPanel" hidden>
+        <div class="row" style="justify-content:space-between"><h3>Your library</h3><span class="hint" id="libNote"></span></div>
+        <div class="lib" id="libList"></div>
       </div>
     </section>
 
@@ -271,7 +272,7 @@
 
 <dialog id="settings">
   <form method="dialog" class="stack" id="settingsForm">
-    <h3>Timer settings</h3>
+    <h3>Settings</h3>
     <div class="setgrid">
       <label for="sFocus">Focus (minutes)</label><input type="number" id="sFocus" min="5" max="90">
       <label for="sShort">Short break</label><input type="number" id="sShort" min="1" max="30">
@@ -280,7 +281,9 @@
       <label for="sAutoBreak">Start breaks automatically</label><input type="checkbox" id="sAutoBreak">
       <label for="sLock">Pause the reader during breaks</label><input type="checkbox" id="sLock">
       <label for="sRecallPrompt">Ask for recall when focus ends</label><input type="checkbox" id="sRecallPrompt">
-      <label for="sSound">Chime at the end of each phase</label><input type="checkbox" id="sSound">
+      <label for="sAmbient">Background sound during focus</label><select id="sAmbient"><option value="river">River</option><option value="rain">Rain</option><option value="ocean">Ocean waves</option><option value="brown">Soft noise</option><option value="off">None</option></select>
+      <label for="sAmbientVol">Background volume</label><input type="range" id="sAmbientVol" min="5" max="100" step="5" class="vol">
+      <label for="sSound">Notification sounds (timer, answers, saving)</label><input type="checkbox" id="sSound">
       <label for="sTheme">Appearance</label><select id="sTheme"><option value="light">Light</option><option value="dark">Dark</option><option value="auto">Match my device</option></select>
       <label for="sSize">Text size</label><select id="sSize"><option value="small">Small</option><option value="medium">Medium</option><option value="large">Large</option></select>
     </div>

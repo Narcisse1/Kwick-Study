@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "river", ambientVol: 40, wpm: 150, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -171,21 +171,119 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 let toastT;
 function toast(t) { const x = $("toast"); x.textContent = t; x.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => x.hidden = true, 2600); }
 
-let audio;
-function chime(rest) {
-  if (!S().sound) return;
+/* ---------- Sound: synthesised in the browser (no audio files, works offline) ---------- */
+let audio = null;
+function actx() {
+  audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+  if (audio.state === "suspended") audio.resume().catch(() => {});
+  return audio;
+}
+// Short notification sounds. Each is a few soft notes: [frequency, start offset s, length s, wave].
+const SFX = {
+  start:    [[523, 0, .18, "sine"], [784, .12, .3, "sine"]],
+  focusEnd: [[660, 0, .5, "sine"], [880, .22, .6, "sine"]],
+  breakEnd: [[880, 0, .45, "sine"], [660, .22, .45, "sine"], [523, .44, .6, "sine"]],
+  correct:  [[880, 0, .2, "triangle"], [1320, .1, .35, "triangle"]],
+  close:    [[660, 0, .3, "triangle"]],
+  wrong:    [[247, 0, .22, "sine"], [196, .14, .35, "sine"]],
+  finish:   [[523, 0, .3, "sine"], [659, .14, .3, "sine"], [784, .28, .3, "sine"], [1047, .42, .6, "sine"]],
+  save:     [[988, 0, .12, "sine"]],
+};
+function sfx(name) {
+  const s = S(); if (s.muted || !s.sound || !SFX[name]) return;
   try {
-    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
-    const notes = rest ? [660, 880] : [880, 660, 523];
-    notes.forEach((f, i) => {
-      const o = audio.createOscillator(), g = audio.createGain();
-      o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(audio.destination);
-      const t = audio.currentTime + i * 0.22;
-      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
-      o.start(t); o.stop(t + 0.55);
+    const ctx = actx(), now = ctx.currentTime;
+    SFX[name].forEach(([f, at, len, wave]) => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = wave; o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      const t = now + at;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.18, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      o.start(t); o.stop(t + len + 0.05);
     });
   } catch {}
 }
+
+// Background sounds made from shaped noise: river, rain, ocean waves, soft (brown) noise.
+const AMB = { type: null, gain: null, node: null, preview: null };
+function noiseBuffer(ctx, kind) {
+  const len = ctx.sampleRate * 6, buf = ctx.createBuffer(2, len, ctx.sampleRate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch); let last = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      if (kind === "brown") { last = (last + 0.02 * w) / 1.02; d[i] = last * 3.5; } else d[i] = w;
+    }
+    if (kind === "brown") { const drift = d[len - 1] - d[0]; for (let i = 0; i < len; i++) d[i] -= drift * i / len; } // seamless loop
+  }
+  return buf;
+}
+function buildAmbient(ctx, type) {
+  const out = ctx.createGain(), running = [];
+  const noise = kind => { const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, kind); n.loop = true; n.start(); running.push(n); return n; };
+  const filter = (kind, freq, q) => { const f = ctx.createBiquadFilter(); f.type = kind; f.frequency.value = freq; if (q) f.Q.value = q; return f; };
+  const gain = v => { const g = ctx.createGain(); g.gain.value = v; return g; };
+  const lfo = (rate, depth, param) => { const o = ctx.createOscillator(), g = gain(depth); o.frequency.value = rate; o.connect(g); g.connect(param); o.start(); running.push(o); };
+  if (type === "river") {
+    const low = gain(0.55); noise("brown").connect(filter("lowpass", 650)).connect(low).connect(out);
+    const bp = filter("bandpass", 1400, 0.6), hiss = gain(0.09);
+    noise("white").connect(bp).connect(hiss).connect(out);
+    lfo(0.23, 450, bp.frequency); lfo(0.17, 0.035, hiss.gain); lfo(0.11, 0.12, low.gain);
+  } else if (type === "rain") {
+    const g = gain(0.13); noise("white").connect(filter("highpass", 900)).connect(filter("lowpass", 7000)).connect(g).connect(out);
+    noise("brown").connect(filter("lowpass", 300)).connect(gain(0.25)).connect(out);
+    lfo(0.09, 0.025, g.gain);
+  } else if (type === "ocean") {
+    const lp = filter("lowpass", 700), swell = gain(0.4);
+    noise("brown").connect(lp).connect(swell).connect(out);
+    lfo(0.075, 0.32, swell.gain); lfo(0.075, 300, lp.frequency);
+  } else {
+    noise("brown").connect(filter("lowpass", 480)).connect(gain(0.6)).connect(out);
+  }
+  return { out, stop() { running.forEach(n => { try { n.stop(); } catch {} }); out.disconnect(); } };
+}
+const ambientLevel = () => (S().ambientVol / 100) * 0.7;
+function ambientPlay(type) {
+  try {
+    const ctx = actx();
+    if (AMB.type === type && AMB.gain) { AMB.gain.gain.setTargetAtTime(ambientLevel(), ctx.currentTime, 0.3); return; }
+    ambientStop();
+    const node = buildAmbient(ctx, type), g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.linearRampToValueAtTime(ambientLevel(), ctx.currentTime + 1.5);
+    node.out.connect(g); g.connect(ctx.destination);
+    Object.assign(AMB, { type, gain: g, node });
+  } catch {}
+}
+function ambientStop() {
+  if (!AMB.gain) return;
+  const { gain: g, node } = AMB, ctx = actx();
+  g.gain.cancelScheduledValues(ctx.currentTime); g.gain.setValueAtTime(g.gain.value, ctx.currentTime); g.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 1);
+  setTimeout(() => { node.stop(); g.disconnect(); }, 1100);
+  Object.assign(AMB, { type: null, gain: null, node: null });
+}
+// Background sound plays during focus rounds only, and never when muted.
+function ambientUpdate() {
+  if (AMB.preview) return;
+  const s = S();
+  if (!s.muted && s.ambient !== "off" && P.running && P.phase === "focus") ambientPlay(s.ambient); else ambientStop();
+}
+function ambientPreview() {
+  clearTimeout(AMB.preview); AMB.preview = null;
+  const s = S();
+  if (s.muted || s.ambient === "off") { ambientUpdate(); return; }
+  ambientPlay(s.ambient);
+  AMB.preview = setTimeout(() => { AMB.preview = null; ambientUpdate(); }, 5000);
+}
+function renderMute() {
+  const m = S().muted;
+  $("muteToggle").textContent = m ? "Unmute" : "Mute";
+  $("muteToggle").setAttribute("aria-label", m ? "Turn sounds back on" : "Mute all sounds");
+  $("muteToggle").setAttribute("aria-pressed", m);
+}
+$("muteToggle").onclick = () => {
+  save("settings", { ...state.settings, muted: !S().muted }); renderMute();
+  clearTimeout(AMB.preview); AMB.preview = null; ambientUpdate();
+  toast(S().muted ? "Sounds muted." : "Sounds on.");
+};
 
 /* ---------- Pomodoro ---------- */
 const P = { phase: "focus", running: false, endAt: 0, remain: 0, round: 0, int: null };
@@ -202,11 +300,12 @@ function pomoRender() {
   t.textContent = P.running ? "Pause" : (P.remain < dur(P.phase) ? "Resume" : "Start");
   t.className = "btn sm " + (rest ? "rest" : "primary");
   $("dots").textContent = "round " + roman(Math.min(P.round + (P.phase === "focus" ? 1 : 0), S().every) || 1) + " of " + roman(S().every);
-  readerLockRender();
+  readerLockRender(); ambientUpdate();
 }
 function pomoStart() {
   if (P.running) return;
   P.running = true; P.endAt = Date.now() + P.remain;
+  if (P.phase === "focus") sfx("start");
   P.int = setInterval(pomoTick, 250); pomoRender();
 }
 function pomoPause() {
@@ -227,11 +326,11 @@ function pomoComplete(natural) {
     }
     P.round += 1;
     P.phase = P.round >= S().every ? "long" : "short";
-    chime(true);
+    sfx("focusEnd");
     onFocusEnd(natural);
   } else {
     if (P.phase === "long") P.round = 0;
-    P.phase = "focus"; chime(false);
+    P.phase = "focus"; sfx("breakEnd");
     toast("Break over. Ready for the next round.");
   }
   P.remain = dur(P.phase);
@@ -346,7 +445,7 @@ function setPlayIcon() {
   $("play").setAttribute("aria-label", R.playing ? "Pause" : "Play");
 }
 function finish() {
-  stop(); recordSession();
+  stop(); recordSession(); sfx("finish");
   showOverlay("Finished. Now test yourself.", "Writing down what you remember is the step that makes it stick.", "Go to recall", () => { hideOverlay(); switchTab("recall"); });
 }
 function recordSession() {
@@ -728,6 +827,8 @@ function renderSuggestions(missed) {
 function checkQuiz() {
   QZ.items.forEach(it => it.result = markAnswer(it.typed, it.back));
   QZ.checked = true; renderSuggestions();
+  const right = QZ.items.filter(it => it.result === "right").length;
+  sfx(right === QZ.items.length ? "correct" : right || QZ.items.some(it => it.result === "close") ? "close" : "wrong");
 }
 // A missed card is due again in 10 minutes; a correct one you keep anyway starts at one day.
 function addQuizCard(it) {
@@ -739,7 +840,7 @@ function addCard(front, back, grade) {
   const id = uid();
   let card = { front, back, src: R.title, ease: 2.5, interval: 0, reps: 0, due: Date.now(), created: Date.now() };
   if (grade != null) card = schedule(card, grade);
-  save("card_" + id, card);
+  save("card_" + id, card); sfx("save");
   renderReview(); renderProgress();
   toast(card.due <= Date.now() + 15 * 60000 ? "Added to review. It comes back " + (card.due <= Date.now() ? "now." : "in 10 minutes.") : "Added to review. First review in " + label(card) + ".");
 }
@@ -801,7 +902,7 @@ $("saveTake").onclick = () => {
   save("take_" + uid(), { title: R.title, ...v, stage: 0, due: Date.now() + STAGES[0] * DAY, created: Date.now(), applied: 0, checks: [] });
   Q4.forEach(([k]) => $("a" + k[0].toUpperCase() + k.slice(1)).value = "");
   $("applyNote").textContent = "";
-  renderApply(); renderReview(); renderProgress();
+  renderApply(); renderReview(); renderProgress(); sfx("save");
   toast("Saved. First checkup tomorrow.");
 };
 
@@ -923,6 +1024,7 @@ function renderReview() {
       const check = () => {
         RV.typed = input.value; RV.checked = true;
         RV.result = cloze ? markAnswer(RV.typed, c.back) : null;
+        if (cloze) sfx(RV.result === "right" ? "correct" : RV.result);
         renderReview();
       };
       b.onclick = check;
@@ -1053,12 +1155,15 @@ $("themeToggle").onclick = () => {
 };
 if (darkQuery && darkQuery.addEventListener) darkQuery.addEventListener("change", () => { if (S().theme === "auto") applyTheme(); });
 $("sTheme").onchange = e => { save("settings", { ...state.settings, theme: e.target.value }); applyTheme(); };
+$("sAmbient").onchange = e => { save("settings", { ...state.settings, ambient: e.target.value }); ambientPreview(); };
+$("sAmbientVol").oninput = e => { state.settings = { ...state.settings, ambientVol: +e.target.value }; saveLater("settings", () => state.settings); ambientPreview(); };
 $("sSize").onchange = e => { save("settings", { ...state.settings, size: e.target.value }); applySize(); SL.spans = []; renderIdle(); };
 $("openSettings").onclick = () => {
   const s = S();
   for (const [id, k] of Object.entries(SET_FIELDS)) $(id).value = s[k];
   for (const [id, k] of Object.entries(SET_CHECKS)) $(id).checked = s[k];
   $("sSize").value = s.size; $("sTheme").value = s.theme;
+  $("sAmbient").value = s.ambient; $("sAmbientVol").value = s.ambientVol;
   $("settings").showModal();
 };
 $("settings").addEventListener("close", () => {
@@ -1071,7 +1176,7 @@ $("settings").addEventListener("close", () => {
   pomoRender();
 });
 function applySettings() {
-  const s = S(); applySize(); applyTheme();
+  const s = S(); applySize(); applyTheme(); renderMute();
   $("wpm").value = s.wpm; $("wpmOut").textContent = s.wpm + " wpm";
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
   $("mode").value = s.mode; $("chunkSize").disabled = s.mode === "slide";

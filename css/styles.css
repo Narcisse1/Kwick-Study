@@ -251,3 +251,5 @@ nav.tabs::-webkit-scrollbar { display: none }
 .lib-title:hover { text-decoration: underline; text-underline-offset: 3px }
 .lib-title:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px }
 .lib-item.current .lib-title { color: var(--ink); font-weight: 600 }
+
+.setgrid input.vol { width: 9rem }
