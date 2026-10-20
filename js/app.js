@@ -218,7 +218,7 @@ function noiseBuffer(ctx, kind) {
   return buf;
 }
 function buildAmbient(ctx, type) {
-  const out = ctx.createGain(), running = [];
+  const out = ctx.createGain(), running = [], timers = [];
   const noise = kind => { const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, kind); n.loop = true; n.start(); running.push(n); return n; };
   const filter = (kind, freq, q) => { const f = ctx.createBiquadFilter(); f.type = kind; f.frequency.value = freq; if (q) f.Q.value = q; return f; };
   const gain = v => { const g = ctx.createGain(); g.gain.value = v; return g; };
@@ -238,10 +238,43 @@ function buildAmbient(ctx, type) {
     const lp = filter("lowpass", 1100), swell = gain(0.45);
     noise("brown").connect(lp).connect(swell).connect(out);
     lfo(0.075, 0.36, swell.gain); lfo(0.075, 600, lp.frequency);
+  } else if (type === "birds") {
+    // Meditation birdsong: a soft breeze, a calm low hum, and birds calling now and then.
+    const breeze = gain(0.16); noise("brown").connect(filter("lowpass", 1300)).connect(breeze).connect(out);
+    lfo(0.06, 0.07, breeze.gain);
+    const hum = gain(0.035);
+    [196, 293.7].forEach(f => { const o = ctx.createOscillator(); o.type = "sine"; o.frequency.value = f; o.connect(hum); o.start(); running.push(o); });
+    hum.connect(out); lfo(0.05, 0.015, hum.gain);
+    const note = (t, f1, f2, len, vol, pan) => {
+      const o = ctx.createOscillator(), g = ctx.createGain(), p = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
+      o.type = "sine"; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + len);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, len / 3)); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
+      o.connect(g); if (p) { p.pan.value = pan; g.connect(p); p.connect(out); } else g.connect(out);
+      o.start(t); o.stop(t + len + 0.02);
+    };
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    const phrase = t => {
+      const pan = rnd(-0.8, 0.8), kind = Math.random();
+      if (kind < 0.35) {        // rising whistles
+        const n = 2 + Math.floor(rnd(0, 3)), base = rnd(2200, 3200);
+        for (let i = 0; i < n; i++) note(t + i * 0.16, base, base * rnd(1.35, 1.6), 0.09, 0.09, pan);
+      } else if (kind < 0.6) {  // quick trill
+        const a = rnd(3000, 3800), b = a * rnd(1.12, 1.22), n = 6 + Math.floor(rnd(0, 5));
+        for (let i = 0; i < n; i++) note(t + i * 0.055, i % 2 ? b : a, i % 2 ? a : b, 0.045, 0.06, pan);
+      } else if (kind < 0.85) { // falling tweet, sometimes answered
+        const f = rnd(3800, 4800); note(t, f, f * 0.62, 0.16, 0.08, pan);
+        if (Math.random() < 0.5) note(t + 0.25, f * 0.95, f * 0.6, 0.14, 0.06, -pan);
+      } else {                  // soft dove coo
+        note(t, 640, 560, 0.35, 0.05, pan); note(t + 0.5, 600, 520, 0.45, 0.045, pan);
+      }
+    };
+    let next = ctx.currentTime + 0.6;
+    const schedule = () => { while (next < ctx.currentTime + 1.5) { phrase(next); next += rnd(1.2, 4.5); } };
+    schedule(); timers.push(setInterval(schedule, 300));
   } else {
     noise("brown").connect(filter("lowpass", 800)).connect(gain(0.6)).connect(out);
   }
-  return { out, stop() { running.forEach(n => { try { n.stop(); } catch {} }); out.disconnect(); } };
+  return { out, stop() { timers.forEach(clearInterval); running.forEach(n => { try { n.stop(); } catch {} }); out.disconnect(); } };
 }
 const ambientLevel = () => (S().ambientVol / 100) * 3;
 let ambBus = null;
@@ -346,7 +379,7 @@ function pomoStart() {
     sfx("start");
     const s = S();
     if (!s.muted && s.ambient !== "off" && !s.ambientTipShown) {
-      const name = { river: "River", rain: "Rain", ocean: "Ocean waves", brown: "Soft noise" }[s.ambient];
+      const name = { river: "River", rain: "Rain", ocean: "Ocean waves", birds: "Birds", brown: "Soft noise" }[s.ambient];
       save("settings", { ...state.settings, ambientTipShown: true });
       toast("Background sound: " + name + ". Change it or mute it under Sound ▾ at the top.");
     }
