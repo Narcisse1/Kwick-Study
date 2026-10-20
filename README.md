@@ -10,7 +10,7 @@ A speed-reading web app built around how memory works: read in Pomodoro focus ro
 | **Pomodoro** | 25-minute focus rounds, 5-minute breaks, a 15-minute break after four rounds (all adjustable). The reader locks during breaks. |
 | **ii. Recall** | Write what you remember without looking. The app scores how many key ideas you recalled and suggests fill-in-the-blank cards for the ones you missed. |
 | **iii. Apply** | Jim Kwik's four questions: *What did I learn? How can I use this? When will I use this? Why must I use this?* Saved as a takeaway with checkups after 1, 3, 7, 14, 30, 60 and 120 days. |
-| **iv. Review** | Due checkups and flashcards (spaced repetition: Again / Hard / Good / Easy). |
+| **iv. Review** | Due checkups and flashcards. For fill-in-the-blank cards you type the missing word and the app marks it (right, close spelling, or wrong) and suggests when the card should return; question cards show your answer next to the correct one. Spaced repetition: Again / Hard / Good / Easy, keys 1–4. |
 | **v. Progress** | Pomodoros, words read, speed, recall, takeaways and times applied, plus a chart of speed against effective speed (speed × recall). |
 
 PDF text is extracted in the browser with [pdf.js](https://mozilla.github.io/pdf.js/) 3.11.174, loaded from cdnjs the first time you open a PDF and cached for offline use after that.

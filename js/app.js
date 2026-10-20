@@ -498,6 +498,9 @@ const drop = $("drop");
 ["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("over"); }));
 drop.addEventListener("drop", e => handleFile(e.dataTransfer.files[0]));
 document.addEventListener("keydown", e => {
+  if (!$("tab-review").hidden && RV.checked && /^[1-4]$/.test(e.key) && !e.target.closest("input, textarea")) {
+    const b = document.querySelectorAll("#gradeArea .grades button")[+e.key - 1]; if (b) { e.preventDefault(); b.click(); } return;
+  }
   if (e.target.closest("input, textarea, select, dialog") || $("tab-read").hidden) return;
   if (e.code === "Space") { e.preventDefault(); R.playing ? stop() : play(); }
   else if (e.key === "ArrowLeft") { e.preventDefault(); jumpSentence(-1); }
@@ -692,8 +695,29 @@ function schedule(c, g) {
   return { ...c, ease, interval, reps: reps + 1, due: Date.now() + interval * DAY };
 }
 const label = c => c.interval === 0 ? "10 min" : c.interval === 1 ? "1 day" : c.interval < 30 ? c.interval + " days" : Math.round(c.interval / 30) + " mo";
-let revealed = false;
+// Review flow: the learner answers first (types into the blank, or writes an answer), then checks.
+// Fill-in-the-blank cards are marked automatically; question cards are compared side by side.
+const RV = { id: null, typed: "", checked: false, result: null };
+const BLANK = "_____";
+const norm = t => (t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, "").replace(/\s+/g, " ").trim();
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+// "right", "close" (a typo or another form of the same word) or "wrong"
+function markAnswer(typed, answer) {
+  const t = norm(typed), a = norm(answer);
+  if (!t) return "wrong";
+  if (t === a) return "right";
+  if (editDistance(t, a) <= (a.length <= 5 ? 1 : 2) || (a.length >= 5 && t.length >= 5 && stem(t) === stem(a))) return "close";
+  return "wrong";
+}
+const SUGGEST = { right: 2, close: 1, wrong: 0 };
 function dueCards() { const now = Date.now(); return Object.entries(state.cards).filter(([, c]) => c.due <= now).sort((a, b) => a[1].due - b[1].due); }
+function gradeCard(id, c, g) { Object.assign(RV, { id: null, typed: "", checked: false, result: null }); save("card_" + id, schedule(c, g)); renderReview(); }
 function renderReview() {
   const due = dueCards(), total = Object.keys(state.cards).length;
   updateBadge(); renderCheckup();
@@ -705,21 +729,66 @@ function renderReview() {
       el("p", "hint", total ? "Next card due " + nextDue() + ". Reviewing at the start of a focus round is a good warm-up." : "After you read, use Recall to turn key ideas into cards. They'll show up here when due."));
   } else {
     const [id, c] = due[0];
-    card.append(el("div", "label", c.src || ""), el("div", "q", c.front));
-    if (revealed) {
-      card.append(el("div", "a", c.back));
+    if (RV.id !== id) Object.assign(RV, { id, typed: "", checked: false, result: null });
+    const cloze = c.front.includes(BLANK);
+    card.append(el("div", "label", c.src || ""));
+    const q = el("div", "q");
+    let input;
+    if (cloze) {
+      const [before, after] = [c.front.slice(0, c.front.indexOf(BLANK)), c.front.slice(c.front.indexOf(BLANK) + BLANK.length)];
+      if (!RV.checked) {
+        input = el("input", "blank"); input.type = "text"; input.id = "blankInput"; input.value = RV.typed;
+        input.setAttribute("aria-label", "Missing word"); input.autocomplete = "off"; input.spellcheck = false;
+        input.style.width = Math.max(5, c.back.length + 2) + "ch";
+        q.append(before, input, after);
+      } else {
+        const filled = el("span", "filled " + RV.result, c.back);
+        q.append(before, filled, after);
+      }
+    } else q.append(c.front);
+    card.append(q);
+
+    if (!RV.checked) {
+      if (!cloze) {
+        input = el("textarea", "answer"); input.id = "answerInput"; input.rows = 2; input.value = RV.typed;
+        input.placeholder = "Type your answer from memory, then check it.";
+        card.append(input);
+      }
+      card.append(el("p", "hint", cloze ? "Type the missing word, then press Enter." : "Saying it out loud works too. Then check."));
+      const b = el("button", "btn primary", "Check"); b.style.width = "100%";
+      const check = () => {
+        RV.typed = input.value; RV.checked = true;
+        RV.result = cloze ? markAnswer(RV.typed, c.back) : null;
+        renderReview();
+      };
+      b.onclick = check;
+      input.addEventListener("input", () => RV.typed = input.value);
+      input.addEventListener("keydown", e => { if (e.key === "Enter" && (cloze || e.ctrlKey || e.metaKey)) { e.preventDefault(); check(); } });
+      ga.append(b);
+      setTimeout(() => { try { input.focus({ preventScroll: true }); } catch {} }, 0);
+    } else {
+      if (cloze) {
+        const msg = RV.result === "right" ? "Correct." : RV.result === "close" ? "Almost. Check the spelling." : "Not quite.";
+        const v = el("div", "verdict " + RV.result);
+        v.append(el("strong", "", msg));
+        if (RV.result !== "right") v.append(" You wrote ", el("s", "", RV.typed.trim() || "nothing"), "; the answer is ", el("b", "", c.back), ".");
+        card.append(v);
+      } else {
+        const v = el("dl", "notes compare");
+        v.append(el("dt", "", "You"), el("dd", "", RV.typed.trim() || "(nothing written)"), el("dt", "", "Answer"), el("dd", "", c.back));
+        card.append(v);
+      }
+      const suggested = cloze ? SUGGEST[RV.result] : null;
+      ga.append(el("p", "hint center", cloze ? "When should this come back? The highlighted choice matches your answer; pick another if it felt easier or harder." : "How well did your answer match? This sets when the card comes back."));
       const g = el("div", "grades");
       ["Again", "Hard", "Good", "Easy"].forEach((name, i) => {
-        const b = el("button", "btn" + (i === 2 ? " rest" : ""));
+        const b = el("button", "btn" + (i === suggested ? " primary" : ""));
         b.append(el("span", "", name), el("small", "", label(schedule(c, i))));
-        b.onclick = () => { revealed = false; save("card_" + id, schedule(c, i)); renderReview(); };
+        b.onclick = () => gradeCard(id, c, i);
         g.append(b);
       });
       ga.append(g);
-    } else {
-      const b = el("button", "btn primary", "Show answer"); b.style.width = "100%";
-      b.onclick = () => { revealed = true; renderReview(); };
-      ga.append(b);
+      setTimeout(() => { const s = g.querySelector(".primary") || g.children[2]; try { s.focus({ preventScroll: true }); } catch {} }, 0);
     }
   }
   const list = $("allCards"); list.replaceChildren();

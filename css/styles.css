@@ -149,7 +149,7 @@ kbd { font-family: var(--body); font-size: .72rem; border: 1px solid var(--line)
 
 /* Review */
 .card { min-height: 220px; display: grid; align-content: center; gap: 16px; text-align: center; padding: 30px 18px; background: var(--surface); border-block: 3px double var(--rule); margin-block: 14px }
-.card .q { font-family: var(--read); font-size: 1.28rem; max-width: 52ch; margin: 0 auto; line-height: 1.45 }
+.card .q { display: block; font-family: var(--read); font-size: 1.28rem; max-width: 52ch; margin: 0 auto; line-height: 1.45 }
 .card .a { font-family: var(--read); font-size: 1.2rem; color: var(--rest); font-style: italic; border-top: 1px solid var(--line); padding-top: 14px; max-width: 40ch; margin: 0 auto; width: 100% }
 .grades { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px }
 .grades button { display: grid; gap: 1px; padding: 8px 4px }
@@ -217,3 +217,15 @@ dialog::backdrop { background: rgb(20 20 18 / .45) }
 .check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer }
 .check input { margin-top: 5px; flex: none }
 #tab-account > .panel { border-top: 0; padding-top: 0 }
+
+/* Review answers */
+.card .q input.blank { font: inherit; text-align: center; border: 0; border-bottom: 2px solid var(--brand); background: var(--brand-soft); padding: 0 4px; margin: 0 3px; border-radius: 2px; color: var(--ink); max-width: 100% }
+.card .q input.blank:focus { outline: none; background: var(--surface) }
+.card .q .filled { padding: 0 4px; border-bottom: 2px solid currentColor }
+.card .q .filled.right { color: var(--rest) } .card .q .filled.close { color: var(--warn) } .card .q .filled.wrong { color: var(--focus) }
+.card textarea.answer { max-width: 44ch; margin: 0 auto; text-align: left }
+.verdict { font-size: 1.05rem; max-width: 46ch; margin: 0 auto }
+.verdict.right strong { color: var(--rest) } .verdict.close strong { color: var(--warn) } .verdict.wrong strong { color: var(--focus) }
+.verdict s { color: var(--muted) } .verdict b { font-weight: 600 }
+.notes.compare { max-width: 46ch; margin: 0 auto; border-top: 1px solid var(--line); padding-top: 12px }
+.hint.center { text-align: center; margin: 0 0 8px }
