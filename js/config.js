@@ -1,6 +1,6 @@
 // Supabase project settings for accounts and sync. Leave empty to run without accounts.
-// The anon key is designed to be public: access is enforced by the row-level security in supabase/schema.sql.
+// The publishable (anon) key is designed to be public: access is enforced by the row-level security in supabase/schema.sql.
 window.KWICK_CONFIG = {
-  supabaseUrl: "",
-  supabaseAnonKey: "",
+  supabaseUrl: "https://frmuqjvtdhgomoiakvjb.supabase.co",
+  supabaseAnonKey: "sb_publishable_jsmKNSMyB0AtuQlYQxwNNQ_B6DYc0dx",
 };
