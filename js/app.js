@@ -1567,7 +1567,7 @@ function applySettings() {
   const s = S(); applySize(); applyTheme(); renderSoundMenu(); renderVoice();
   renderWpm();
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
-  $("mode").value = s.mode; $("chunkRow").hidden = s.mode !== "flash";
+  $("mode").value = s.mode;
   if (!R.playing && R.words.length) renderIdle();
   if (!P.running && P.remain === dur(P.phase) || !P.running && P.remain > dur(P.phase)) P.remain = dur(P.phase);
   pomoRender(); readerMeta();
