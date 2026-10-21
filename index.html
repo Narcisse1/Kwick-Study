@@ -107,10 +107,15 @@
           </div>
           <div class="opts">
             <label for="mode">Mode <select id="mode"><option value="slide">Slide</option><option value="flash">Flash</option></select></label>
+            <span class="voice-row" id="voiceRow">
+              <label class="check-inline"><input type="checkbox" id="voiceOn"> Read aloud</label>
+              <select id="voiceSel" aria-label="Voice" hidden></select>
+            </span>
             <label for="chunkSize" id="chunkRow">Words <select id="chunkSize"><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
             <label><input type="checkbox" id="punct" checked> Pause at punctuation</label>
           </div>
         </div>
+        <p class="hint voice-note" id="voiceNote" aria-live="polite"></p>
         <p class="hint" style="margin:0"><kbd>Space</kbd> play or pause · <kbd>←</kbd> <kbd>→</kbd> sentence · <kbd>↑</kbd> <kbd>↓</kbd> speed.</p>
       </div>
 

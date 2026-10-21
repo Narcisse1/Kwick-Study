@@ -12,7 +12,7 @@ Speed reading fits into this picture only when comprehension keeps up. Reading f
 /* ---------- storage: localStorage on this device, synced to the account when signed in ---------- */
 const LS = "kwick-study-v1";
 const state = { settings: {}, cards: {}, sessions: {}, days: {}, takes: {}, library: {} };
-const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "birds", ambientVol: 50, wpm: 125, chunk: 1, punct: true, mode: "slide", size: "medium", theme: "light" };
+const DEFAULTS = { focus: 25, short: 5, long: 15, every: 4, autoBreak: true, lock: true, recallPrompt: true, sound: true, muted: false, ambient: "birds", ambientVol: 50, wpm: 125, chunk: 1, punct: true, mode: "slide", voice: false, voiceName: "", size: "medium", theme: "light" };
 
 function ingest(key, val) {
   if (key === "settings") state.settings = val;
@@ -303,7 +303,7 @@ function buildAmbient(ctx, type) {
   }
   return { out, stop() { timers.forEach(clearInterval); running.forEach(n => { try { n.stop(); } catch {} }); out.disconnect(); } };
 }
-const ambientLevel = () => (S().ambientVol / 100) * 3;
+const ambientLevel = () => (S().ambientVol / 100) * 3 * (voiceActive() ? 0.35 : 1);
 let ambBus = null;
 function ambientBus(ctx) {
   if (ambBus) return ambBus;
@@ -356,7 +356,8 @@ function renderSoundMenu() {
   $("mPreview").disabled = s.muted || s.ambient === "off";
 }
 function setSound(patch, preview) {
-  save("settings", { ...state.settings, ...patch }); renderSoundMenu();
+  save("settings", { ...state.settings, ...patch }); renderSoundMenu(); renderVoice();
+  if (patch.muted && R.playing && S().voice) { stop(); toast("Read aloud paused because sounds are muted."); }
   if (preview) ambientPreview(); else { clearTimeout(AMB.preview); AMB.preview = null; ambientUpdate(); }
 }
 function toggleSoundMenu(open) {
@@ -522,6 +523,14 @@ function slideSlowdown(wi) {
 function slideFrame(t) {
   if (!R.playing) return;
   const dt = Math.min(50, t - SL.last); SL.last = t;
+  if (voiceActive()) {
+    // glide towards the word being spoken instead of running on our own clock
+    const target = Math.min(R.cur + 0.35, R.words.length - 0.01);
+    if (target > SL.pos) SL.pos += (target - SL.pos) * (1 - Math.exp(-dt / 140));
+    else if (target < SL.pos - 1) SL.pos = target;
+    slidePlace(); SL.raf = requestAnimationFrame(slideFrame);
+    return;
+  }
   const wi = Math.floor(SL.pos);
   // Steady speed in pixels (so short and long words pass at the same pace), eased into and out of
   // the pauses at punctuation instead of braking and jumping.
@@ -537,6 +546,89 @@ function slideFrame(t) {
   slidePlace();
   SL.raf = requestAnimationFrame(slideFrame);
 }
+/* ---------- Read aloud (the device's own speech voices, via the Web Speech API) ---------- */
+const TTS = { token: 0, start: 0, end: 0, offs: [], heard: false, began: 0, rate: 1, tick: null };
+const ttsSupported = "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+const voiceActive = () => ttsSupported && S().voice && !S().muted;
+// Speech rate 1 is roughly 165 words a minute; voices stay clear up to about 2x.
+const ttsRate = () => Math.min(2, Math.max(0.5, S().wpm / 165));
+// Prefer the most natural-sounding voice for the page's language.
+function ttsVoices() {
+  if (!ttsSupported) return [];
+  const lang = (document.documentElement.lang || navigator.language || "en").slice(0, 2).toLowerCase();
+  const score = v => (/natural|neural|enhanced|premium|siri|online/i.test(v.name) ? 4 : 0) + (/google|microsoft|samantha|daniel|karen|moira|serena/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1) + (v.default ? 1 : 0);
+  return speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith(lang)).sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+}
+function ttsVoice() { const list = ttsVoices(); return list.find(v => v.name === S().voiceName) || list[0] || null; }
+// Speak one sentence at a time (long utterances get cut off in some browsers), mapping each spoken
+// word back to its place in the text so the reader can follow along.
+function ttsSpeakFrom(i) {
+  const tok = ++TTS.token;
+  speechSynthesis.cancel();
+  if (!R.playing) return;
+  if (i >= R.words.length) { finish(); return; }
+  let end = i;
+  while (end < R.words.length) { const w = R.words[end++]; if (/[.!?]["'”’)]*$/.test(w) || R.paraStarts.has(end) || end - i >= 40) break; }
+  let text = ""; const offs = [];
+  for (let k = i; k < end; k++) { offs.push(text ? text.length + 1 : 0); text = text ? text + " " + R.words[k] : R.words[k]; }
+  Object.assign(TTS, { start: i, end, offs, heard: false, began: performance.now(), rate: ttsRate() });
+  ttsAt(i);
+  const u = new SpeechSynthesisUtterance(text);
+  const v = ttsVoice(); if (v) { u.voice = v; u.lang = v.lang; }
+  u.rate = TTS.rate;
+  u.onboundary = e => {
+    if (tok !== TTS.token || (e.name && e.name !== "word")) return;
+    TTS.heard = true;
+    let k = 0; while (k + 1 < offs.length && offs[k + 1] <= e.charIndex) k++;
+    ttsAt(i + k);
+  };
+  u.onend = () => { if (tok !== TTS.token || !R.playing) return; ttsAt(end - 1); setTimeout(() => { if (tok === TTS.token && R.playing) ttsSpeakFrom(end); }, R.paraStarts.has(end) ? 350 : 60); };
+  u.onerror = e => {
+    if (tok !== TTS.token || e.error === "interrupted" || e.error === "canceled") return;
+    stop(); toast("Couldn't read aloud on this device. Try another voice, or turn Read aloud off.");
+  };
+  speechSynthesis.speak(u);
+}
+// Some voices don't report which word they're on; then estimate it from the speaking rate.
+function ttsEstimate() {
+  if (!R.playing || TTS.heard || !TTS.offs.length) return;
+  const words = Math.floor((performance.now() - TTS.began) / 1000 * 2.75 * TTS.rate);
+  const k = Math.min(TTS.start + words, TTS.end - 1);
+  if (k > R.cur) ttsAt(k);
+}
+function ttsAt(k) {
+  k = Math.max(0, Math.min(k, R.words.length - 1));
+  R.cur = k; R.i = S().mode === "slide" ? k : k + 1; R.maxI = Math.max(R.maxI, k + 1);
+  if (S().mode !== "slide") showWord(R.words[k]);
+  readerMeta(); ctxFollow();
+}
+function ttsStop() { TTS.token++; clearInterval(TTS.tick); TTS.tick = null; if (ttsSupported) speechSynthesis.cancel(); }
+function renderVoice() {
+  const s = S(), box = $("voiceRow");
+  // the voice reads one word at a time, so the "Words" option only applies in Flash mode without it
+  $("chunkRow").hidden = s.mode !== "flash" || (s.voice && ttsSupported);
+  if (!ttsSupported) { box.hidden = true; return; }
+  $("voiceOn").checked = s.voice;
+  const sel = $("voiceSel"), list = ttsVoices();
+  sel.hidden = !s.voice || !list.length;
+  const cur = ttsVoice();
+  sel.replaceChildren(...list.map(v => { const o = el("option", "", v.name.replace(/\s*\(.*?\)\s*$/, "") + (v.localService ? "" : " · online")); o.value = v.name; o.selected = cur && v.name === cur.name; return o; }));
+  $("voiceNote").textContent = !s.voice ? "" : s.muted ? "Sounds are muted. Unmute under Sound ▾ to hear the voice."
+    : !list.length ? "No voices found on this device for this language."
+    : s.wpm > 330 ? "The voice tops out around 330 wpm, so it reads a little slower than your speed." : "";
+}
+if (ttsSupported) speechSynthesis.addEventListener ? speechSynthesis.addEventListener("voiceschanged", renderVoice) : (speechSynthesis.onvoiceschanged = renderVoice);
+$("voiceOn").onchange = e => {
+  const wasPlaying = R.playing; if (wasPlaying) stop();
+  save("settings", { ...state.settings, voice: e.target.checked }); renderVoice();
+  if (e.target.checked) toast("Read aloud on. Press play and the voice will read while the text follows along.");
+  if (wasPlaying) play();
+};
+$("voiceSel").onchange = e => {
+  save("settings", { ...state.settings, voiceName: e.target.value });
+  if (R.playing && voiceActive()) ttsSpeakFrom(R.cur);
+};
+
 function orp(n) { return n <= 1 ? 0 : n <= 5 ? 1 : n <= 9 ? 2 : n <= 13 ? 3 : 4; }
 function showWord(w, idle) {
   const chunkMode = S().chunk > 1 && !idle;
@@ -580,6 +672,17 @@ function play() {
   }
   setPlayIcon();
   try { navigator.wakeLock && navigator.wakeLock.request("screen").then(w => wake = w).catch(() => {}); } catch {}
+  if (voiceActive()) {
+    // Read aloud: the voice sets the pace and the reader follows the spoken word.
+    const from = S().mode === "slide" ? Math.min(R.i, R.words.length - 1) : Math.min(R.cur || 0, R.words.length - 1);
+    if (S().mode === "slide") {
+      $("slide").hidden = false; $("rsvp").hidden = true; $("chunk").hidden = true;
+      SL.pos = from; SL.last = performance.now(); slidePlace(); SL.raf = requestAnimationFrame(slideFrame);
+    } else { $("rsvp").hidden = false; $("chunk").hidden = true; }
+    TTS.tick = setInterval(ttsEstimate, 100);
+    ttsSpeakFrom(from);
+    return;
+  }
   if (S().mode === "slide") {
     $("slide").hidden = false; $("rsvp").hidden = true; $("chunk").hidden = true;
     SL.pos = Math.min(R.i, R.words.length - 1); SL.last = performance.now(); SL.ease = 1 / slideSlowdown(Math.floor(SL.pos)); slidePlace();
@@ -589,6 +692,7 @@ function play() {
 function stop() {
   if (!R.playing) return;
   R.playing = false; clearTimeout(R.t); cancelAnimationFrame(SL.raf); R.activeMs += performance.now() - R.since;
+  ttsStop();
   ambientUpdate();
   setPlayIcon(); buildContext(); $("contextPanel").hidden = false;
   try { wake && wake.release(); wake = null; } catch {}
@@ -619,7 +723,7 @@ function jumpSentence(dir) {
   if (dir > 0 && k >= s.length) target = R.words.length - 1;
   R.i = R.cur = target;
   if (S().mode === "slide") { SL.pos = Math.min(R.i, R.words.length - 1); slidePlace(); } else showWord(R.words[R.i] || "", !R.playing);
-  readerMeta(); if (!R.playing) { buildContext(); libSavePos(); }
+  readerMeta(); if (!R.playing) { buildContext(); libSavePos(); } else if (voiceActive()) ttsSpeakFrom(R.cur);
 }
 function readerMeta() {
   const n = R.words.length, pct = n ? R.i / n * 100 : 0;
@@ -668,7 +772,7 @@ function ctxFollow() {
   const s = CTX.spans.get(c); if (s) s.className = "cur";
   CTX.cur = c; ctxScroll(s, true);
 }
-$("context").onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; R.i = R.cur = +i; renderIdle(); readerMeta(); buildContext(); libSavePos(); };
+$("context").onclick = e => { const i = e.target.dataset && e.target.dataset.i; if (i == null) return; R.i = R.cur = +i; renderIdle(); readerMeta(); buildContext(); libSavePos(); if (R.playing && voiceActive()) ttsSpeakFrom(R.cur); };
 function showOverlay(title, text, btnText, fn) {
   const o = $("overlay"); o.replaceChildren(el("strong", "", title), el("span", "hint", text));
   if (btnText) { const b = el("button", "btn primary", btnText); b.onclick = fn; const w = el("div"); w.append(b); o.append(w); }
@@ -703,7 +807,7 @@ function setWpm(v) {
   renderWpm(); readerMeta(); saveLater("settings", () => state.settings);
 }
 function renderWpm() {
-  const v = S().wpm;
+  const v = S().wpm; if (typeof renderVoice === "function" && ttsSupported) renderVoice();
   $("wpmOut").textContent = v + " wpm";
   $("wpmDown").disabled = v <= WPM_MIN; $("wpmUp").disabled = v >= WPM_MAX;
 }
@@ -720,7 +824,7 @@ function renderWpm() {
 });
 $("chunkSize").onchange = e => { save("settings", { ...state.settings, chunk: +e.target.value }); };
 $("punct").onchange = e => { save("settings", { ...state.settings, punct: e.target.checked }); };
-$("mode").onchange = e => { stop(); save("settings", { ...state.settings, mode: e.target.value }); $("chunkRow").hidden = e.target.value !== "flash"; renderIdle(); };
+$("mode").onchange = e => { stop(); save("settings", { ...state.settings, mode: e.target.value }); renderVoice(); renderIdle(); };
 // Rebuild the sliding line only when the width really changes: on phones the address bar showing
 // and hiding fires resize events (height only) all the time while scrolling.
 let lastWidth = window.innerWidth;
@@ -1460,7 +1564,7 @@ $("settings").addEventListener("close", () => {
   pomoRender();
 });
 function applySettings() {
-  const s = S(); applySize(); applyTheme(); renderSoundMenu();
+  const s = S(); applySize(); applyTheme(); renderSoundMenu(); renderVoice();
   renderWpm();
   $("chunkSize").value = s.chunk; $("punct").checked = s.punct;
   $("mode").value = s.mode; $("chunkRow").hidden = s.mode !== "flash";

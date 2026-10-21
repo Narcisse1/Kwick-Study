@@ -293,3 +293,10 @@ nav.tabs::-webkit-scrollbar { display: none }
 .track .para-gap { font-style: normal; color: var(--line); padding-inline: .9em; font-size: .8em; vertical-align: middle }
 
 .lib .old-copy { color: var(--warn); font-style: italic }
+
+/* Read aloud */
+.voice-row { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap }
+.check-inline { display: inline-flex; gap: 6px; align-items: center; cursor: pointer }
+#voiceSel { max-width: 14rem }
+.voice-note { margin: 0; color: var(--warn) }
+.voice-note:empty { display: none }
