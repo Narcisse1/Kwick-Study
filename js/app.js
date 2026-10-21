@@ -557,14 +557,15 @@ function ttsVoices() {
   if (!ttsSupported) return [];
   const lang = (document.documentElement.lang || navigator.language || "en").slice(0, 2).toLowerCase();
   const score = v => (/natural|neural|enhanced|premium|siri|online/i.test(v.name) ? 4 : 0) + (/google|microsoft|samantha|daniel|karen|moira|serena/i.test(v.name) ? 2 : 0) + (v.localService ? 0 : 1) + (v.default ? 1 : 0);
-  return speechSynthesis.getVoices().filter(v => v.lang.toLowerCase().startsWith(lang)).sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
+  return speechSynthesis.getVoices().filter(v => (v.lang || "").toLowerCase().replace("_", "-").startsWith(lang)).sort((a, b) => score(b) - score(a) || a.name.localeCompare(b.name));
 }
 function ttsVoice() { const list = ttsVoices(); return list.find(v => v.name === S().voiceName) || list[0] || null; }
 // Speak one sentence at a time (long utterances get cut off in some browsers), mapping each spoken
 // word back to its place in the text so the reader can follow along.
 function ttsSpeakFrom(i) {
   const tok = ++TTS.token;
-  speechSynthesis.cancel();
+  const busy = speechSynthesis.speaking || speechSynthesis.pending;
+  if (busy) speechSynthesis.cancel();
   if (!R.playing) return;
   if (i >= R.words.length) { finish(); return; }
   let end = i;
@@ -587,7 +588,11 @@ function ttsSpeakFrom(i) {
     if (tok !== TTS.token || e.error === "interrupted" || e.error === "canceled") return;
     stop(); toast("Couldn't read aloud on this device. Try another voice, or turn Read aloud off.");
   };
-  speechSynthesis.speak(u);
+  TTS.utter = u;
+  if (speechSynthesis.paused) speechSynthesis.resume();
+  // speak straight away when nothing was cancelled (iPhones need the first one inside the tap),
+  // otherwise give the engine a moment so the new sentence isn't dropped
+  if (busy) setTimeout(() => { if (tok === TTS.token) speechSynthesis.speak(u); }, 60); else speechSynthesis.speak(u);
 }
 // Some voices don't report which word they're on; then estimate it from the speaking rate.
 function ttsEstimate() {
@@ -607,17 +612,27 @@ function renderVoice() {
   const s = S(), box = $("voiceRow");
   // the voice reads one word at a time, so the "Words" option only applies in Flash mode without it
   $("chunkRow").hidden = s.mode !== "flash" || (s.voice && ttsSupported);
-  if (!ttsSupported) { box.hidden = true; return; }
-  $("voiceOn").checked = s.voice;
-  const sel = $("voiceSel"), list = ttsVoices();
-  sel.hidden = !s.voice || !list.length;
-  const cur = ttsVoice();
-  sel.replaceChildren(...list.map(v => { const o = el("option", "", v.name.replace(/\s*\(.*?\)\s*$/, "") + (v.localService ? "" : " · online")); o.value = v.name; o.selected = cur && v.name === cur.name; return o; }));
-  $("voiceNote").textContent = !s.voice ? "" : s.muted ? "Sounds are muted. Unmute under Sound ▾ to hear the voice."
-    : !list.length ? "No voices found on this device for this language."
+  box.hidden = false;
+  [$("voiceOn"), $("mVoiceOn")].forEach(c => { c.checked = s.voice && ttsSupported; c.disabled = !ttsSupported; });
+  if (!ttsSupported) {
+    $("voiceSel").hidden = true; $("mVoiceSel").hidden = true;
+    const note = "Read aloud isn't available in this browser. Open Kwick-Study in Chrome, Safari or Edge (links opened inside WhatsApp, Instagram or Facebook often can't speak).";
+    $("voiceNote").textContent = s.voice ? note : ""; $("mVoiceNote").textContent = note;
+    return;
+  }
+  const list = ttsVoices(), cur = ttsVoice();
+  [$("voiceSel"), $("mVoiceSel")].forEach(sel => {
+    sel.hidden = !s.voice || !list.length;
+    sel.replaceChildren(...list.map(v => { const o = el("option", "", v.name.replace(/\s*\(.*?\)\s*$/, "") + (v.localService ? "" : " · online")); o.value = v.name; o.selected = cur && v.name === cur.name; return o; }));
+  });
+  const note = !s.voice ? "" : s.muted ? "Sounds are muted. Unmute under Sound ▾ to hear the voice."
+    : !list.length ? "Using your device's default voice."
     : s.wpm > 330 ? "The voice tops out around 330 wpm, so it reads a little slower than your speed." : "";
+  $("voiceNote").textContent = note; $("mVoiceNote").textContent = note;
 }
 if (ttsSupported) speechSynthesis.addEventListener ? speechSynthesis.addEventListener("voiceschanged", renderVoice) : (speechSynthesis.onvoiceschanged = renderVoice);
+$("mVoiceOn").onchange = e => { $("voiceOn").checked = e.target.checked; $("voiceOn").onchange({ target: $("voiceOn") }); };
+$("mVoiceSel").onchange = e => { $("voiceSel").value = e.target.value; $("voiceSel").onchange({ target: $("voiceSel") }); };
 $("voiceOn").onchange = e => {
   const wasPlaying = R.playing; if (wasPlaying) stop();
   save("settings", { ...state.settings, voice: e.target.checked }); renderVoice();

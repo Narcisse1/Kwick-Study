@@ -54,6 +54,11 @@
             <div class="row" style="justify-content:space-between"><label class="label" for="mVol">Volume</label><output id="mVolOut">50%</output></div>
             <input type="range" id="mVol" min="5" max="100" step="5">
           </div>
+          <div class="stack" style="gap:6px">
+            <label class="check"><input type="checkbox" id="mVoiceOn"><span>Read aloud (a voice reads the text)</span></label>
+            <select id="mVoiceSel" aria-label="Voice" hidden></select>
+            <span class="hint voice-note" id="mVoiceNote"></span>
+          </div>
           <label class="check"><input type="checkbox" id="mNotify"><span>Notification sounds (time's up bell, answers, saving)</span></label>
           <button type="button" class="btn sm" id="mPreview">Play a 5-second preview</button>
         </div>

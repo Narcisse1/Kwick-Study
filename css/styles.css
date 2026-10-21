@@ -300,3 +300,5 @@ nav.tabs::-webkit-scrollbar { display: none }
 #voiceSel { max-width: 14rem }
 .voice-note { margin: 0; color: var(--warn) }
 .voice-note:empty { display: none }
+
+#mVoiceSel { width: 100% }
