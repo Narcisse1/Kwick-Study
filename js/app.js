@@ -1656,7 +1656,9 @@ function friendlyAuthError(e) {
   if (m.includes("email not confirmed")) return "Confirm your email first. We sent you a link when you signed up.";
   if (m.includes("rate limit") || m.includes("too many")) return "Too many attempts. Wait a minute, then try again.";
   if (m.includes("password")) return e.message;
-  if (m.includes("fetch") || m.includes("network")) return "Couldn't reach the server. Check your internet connection and try again.";
+  if (m.includes("fetch") || m.includes("network") || m.includes("load failed"))
+    return navigator.onLine === false ? "You're offline. Connect to the internet and try again."
+      : "The account service isn't responding right now. Your study data is safe on this device; try again in a few minutes.";
   return e && e.message ? e.message : "Something went wrong. Try again.";
 }
 $("openAccount").onclick = () => switchTab("account");
